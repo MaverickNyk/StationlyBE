@@ -16,7 +16,7 @@ public class TflDataService {
 
     private final TflApiClient tflApiClient;
 
-    @Cacheable("arrivals")
+    @Cacheable(value = "arrivals", key = "#stationId")
     public List<ArrivalPrediction> getArrivalsForStation(String stationId) {
         log.info("Cache miss. Fetching fresh data from TFL API for station: {}", stationId);
         return tflApiClient.getArrivals(stationId);
