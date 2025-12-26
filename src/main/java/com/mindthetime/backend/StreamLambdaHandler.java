@@ -6,6 +6,8 @@ import com.amazonaws.serverless.proxy.model.AwsProxyResponse;
 import com.amazonaws.serverless.proxy.spring.SpringBootLambdaContainerHandler;
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
+import com.mindthetime.backend.config.ApplicationContextHolder;
+import com.mindthetime.backend.service.TflPollingService;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,6 +29,28 @@ public class StreamLambdaHandler implements RequestStreamHandler {
     @Override
     public void handleRequest(InputStream inputStream, OutputStream outputStream, Context context)
             throws IOException {
-        handler.proxyStream(inputStream, outputStream, context);
+
+        // Convert input stream to string for manual inspection
+        byte[] inputBytes = inputStream.readAllBytes();
+        String inputString = new String(inputBytes);
+
+        // Check if this is an AWS EventBridge Scheduled Event
+        if (inputString.contains("aws.events") && inputString.contains("Scheduled Event")) {
+            context.getLogger().log("⏰ Detected EventBridge Scheduled Event. Triggering manual refresh...");
+            try {
+                TflPollingService pollingService = ApplicationContextHolder.getBean(TflPollingService.class);
+                pollingService.refreshAll();
+                context.getLogger().log("✅ Scheduled refresh completed successfully.");
+                return;
+            } catch (Exception e) {
+                context.getLogger().log("❌ Error during scheduled refresh: " + e.getMessage());
+                e.printStackTrace();
+                return;
+            }
+        }
+
+        // Otherwise, proceed with normal API Proxy (Rest Controllers)
+        java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(inputBytes);
+        handler.proxyStream(bais, outputStream, context);
     }
 }

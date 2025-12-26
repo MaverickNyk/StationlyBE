@@ -14,8 +14,16 @@ public class TflApiClient {
     @Value("${tfl.app.key}")
     private String appKey;
 
+    @Value("${tfl.arrival.prediction.count}")
+    private int arrivalPredictionCount;
+
+    @Value("${tfl.api.timeout}")
+    private int apiTimeout;
+
     public TflApiClient(WebClient.Builder webClientBuilder) {
-        this.webClient = webClientBuilder.baseUrl("https://api.tfl.gov.uk").build();
+        this.webClient = webClientBuilder
+                .baseUrl("https://api.tfl.gov.uk")
+                .build();
     }
 
     public List<ArrivalPrediction> getArrivals(String stationId) {
@@ -26,7 +34,22 @@ public class TflApiClient {
                         .build(stationId))
                 .retrieve()
                 .bodyToFlux(ArrivalPrediction.class)
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
                 .collectList()
-                .block(); // Blocking here as our service layer is synchronous for now, could be made reactive later
+                .block();
+    }
+
+    public List<ArrivalPrediction> getArrivalsByMode(String mode) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Mode/{mode}/Arrivals")
+                        .queryParam("app_key", appKey)
+                        .queryParam("count", arrivalPredictionCount)
+                        .build(mode))
+                .retrieve()
+                .bodyToFlux(ArrivalPrediction.class)
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
+                .collectList()
+                .block();
     }
 }

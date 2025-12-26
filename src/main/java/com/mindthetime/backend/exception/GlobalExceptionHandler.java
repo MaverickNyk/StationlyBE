@@ -1,48 +1,48 @@
 package com.mindthetime.backend.exception;
 
 import com.mindthetime.backend.model.ErrorResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
-import org.springframework.web.reactive.function.client.WebClientResponseException;
-import org.springframework.web.server.ServerWebExchange;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.time.LocalDateTime;
 
-@ControllerAdvice
+@RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler(WebClientResponseException.class)
-    public ResponseEntity<ErrorResponse> handleWebClientError(WebClientResponseException ex,
-            ServerWebExchange exchange) {
-        log.error("TFL API Error: Status {}, Body {}", ex.getStatusCode(), ex.getResponseBodyAsString());
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParams(MissingServletRequestParameterException ex,
+            HttpServletRequest request) {
+        log.warn("Bad Request: Missing parameter - {}", ex.getMessage());
 
-        ErrorResponse errorResponse = ErrorResponse.builder()
+        ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
-                .status(ex.getStatusCode().value())
-                .error(ex.getStatusCode().toString())
-                .message("Upstream API Error: " + ex.getStatusText())
-                .path(exchange.getRequest().getPath().value())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(ex.getMessage())
+                .path(request.getRequestURI())
                 .build();
 
-        return new ResponseEntity<>(errorResponse, ex.getStatusCode());
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<ErrorResponse> handleGeneralError(Exception ex, ServerWebExchange exchange) {
-        log.error("Unexpected Error", ex);
+    public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex, HttpServletRequest request) {
+        log.error("Internal Server Error at {}: ", request.getRequestURI(), ex);
 
-        ErrorResponse errorResponse = ErrorResponse.builder()
+        ErrorResponse error = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(HttpStatus.INTERNAL_SERVER_ERROR.value())
-                .error(HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase())
-                .message(ex.getMessage())
-                .path(exchange.getRequest().getPath().value())
+                .error("Internal Server Error")
+                .message("An unexpected error occurred. Please check logs.")
+                .path(request.getRequestURI())
                 .build();
 
-        return new ResponseEntity<>(errorResponse, HttpStatus.INTERNAL_SERVER_ERROR);
+        return new ResponseEntity<>(error, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 }
