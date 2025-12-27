@@ -30,7 +30,6 @@ buildNumber
 .Trashes
 ehthumbs.db
 Thumbs.db
+
 # Local configuration
 src/main/resources/application-local.properties
-mobile/*
-MindTheTime/*
