@@ -97,4 +97,17 @@ public class TflApiClient {
                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                 .block();
     }
+
+    public java.util.Map<String, Object> getLineRoute(String lineId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Line/{lineId}/Route")
+                        .queryParam("app_key", appKey)
+                        .build(lineId))
+                .retrieve()
+                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<java.util.Map<String, Object>>() {
+                })
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
+                .block();
+    }
 }

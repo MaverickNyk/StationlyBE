@@ -14,8 +14,6 @@ import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 
 @Service
@@ -98,6 +96,13 @@ public class FcmService {
             // Since our payload is a complex object (DirectionPredictions),
             // we serialize it to a JSON string.
             String jsonPayload = objectMapper.writeValueAsString(payload);
+            byte[] payloadBytes = jsonPayload.getBytes(StandardCharsets.UTF_8);
+
+            if (payloadBytes.length > 4000) {
+                log.error("❌ FCM payload for topic {} is too big ({} bytes). Skipping send.",
+                        topic, payloadBytes.length);
+                return;
+            }
 
             Message message = Message.builder()
                     .setTopic(topic)
@@ -123,38 +128,46 @@ public class FcmService {
             return;
         }
 
-        List<Message> messages = new ArrayList<>();
-        for (Map.Entry<String, Object> entry : topicPayloads.entrySet()) {
-            try {
-                String jsonPayload = objectMapper.writeValueAsString(entry.getValue());
-                messages.add(Message.builder()
-                        .setTopic(entry.getKey())
-                        .putData("payload", jsonPayload)
-                        .build());
-            } catch (Exception e) {
-                log.error("Error preparing FCM message for topic: {}", entry.getKey(), e);
-            }
-        }
+        log.info("🚀 Sending {} FCM messages in parallel...", topicPayloads.size());
 
-        log.info("🚀 Sending {} FCM messages in batch...", messages.size());
+        long start = System.currentTimeMillis();
+        // Use parallel stream to send messages concurrently.
+        // This is safe because each publishToTopic call is independent.
+        long successCount = topicPayloads.entrySet().parallelStream()
+                .map(entry -> {
+                    try {
+                        publishToTopic(entry.getKey(), entry.getValue());
+                        return true;
+                    } catch (Exception e) {
+                        log.error("❌ Failed to send individual FCM message for topic: {}", entry.getKey(), e);
+                        return false;
+                    }
+                })
+                .filter(success -> success)
+                .count();
 
-        // Chunk messages to 100 (reduced from 500 for better reliability/visibility)
-        for (int i = 0; i < messages.size(); i += 100) {
-            List<Message> chunk = messages.subList(i, Math.min(i + 100, messages.size()));
-            try {
-                BatchResponse response = FirebaseMessaging.getInstance().sendEach(chunk);
-                log.info("✅ Batch sent {} messages. Success: {}, Failure: {}",
-                        chunk.size(), response.getSuccessCount(), response.getFailureCount());
+        long duration = System.currentTimeMillis() - start;
+        log.info("✅ Finished sending FCM messages. Total: {}, Success: {}, Time: {}ms",
+                topicPayloads.size(), successCount, duration);
+    }
 
-                if (response.getFailureCount() > 0) {
-                    response.getResponses().stream()
-                            .filter(res -> !res.isSuccessful())
-                            .limit(5)
-                            .forEach(res -> log.error("FCM Batch Error: {}", res.getException().getMessage()));
-                }
-            } catch (FirebaseMessagingException e) {
-                log.error("❌ Failed to send FCM batch", e);
-            }
+    /**
+     * Send a special signal to a topic instructing clients to clear their state
+     * 
+     * @param topic FCM topic
+     */
+    public void sendClearSignal(String topic) {
+        if (!fcmEnabled)
+            return;
+        try {
+            Message message = Message.builder()
+                    .setTopic(topic)
+                    .putData("action", "CLEAR")
+                    .build();
+            FirebaseMessaging.getInstance().send(message);
+            log.debug("Sent CLEAR signal to topic: {}", topic);
+        } catch (Exception e) {
+            log.error("Failed to send CLEAR signal to topic: {}", topic, e);
         }
     }
 }

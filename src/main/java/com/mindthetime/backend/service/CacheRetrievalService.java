@@ -26,7 +26,7 @@ public class CacheRetrievalService {
 
     /**
      * Retrieve predictions from Redis cache for given parameters
-     * Supports comma-separated values for station, mode, and direction
+     * Uses consolidated Station keys and performs in-memory filtering
      * 
      * @param stations   Comma-separated station IDs
      * @param modes      Comma-separated mode/line IDs
@@ -34,30 +34,34 @@ public class CacheRetrievalService {
      * @return Map of cache keys to predictions, or empty map if none found
      */
     public Map<String, DirectionPredictions> getPredictions(String stations, String modes, String directions) {
-        List<String> stationList = parseCommaSeparated(stations);
+        List<String> stationIds = parseCommaSeparated(stations);
         List<String> modeList = parseCommaSeparated(modes);
         List<String> directionList = parseCommaSeparated(directions);
 
         Map<String, DirectionPredictions> results = new HashMap<>();
 
-        // Generate all combinations of StationId::LineId::Direction
-        for (String station : stationList) {
-            for (String mode : modeList) {
-                for (String direction : directionList) {
-                    String key = String.format("%s-%s-%s",
-                            normalize(station),
-                            normalize(mode),
-                            normalize(direction));
+        for (String stationId : stationIds) {
+            String redisKey = "Station_" + normalize(stationId);
+            Station cachedStation = redisService.get(redisKey, Station.class);
 
-                    DirectionPredictions predictions = redisService.get(key, DirectionPredictions.class);
-
-                    if (predictions != null) {
-                        results.put(key, predictions);
-                        log.debug("Cache hit for key: {}", key);
-                    } else {
-                        log.debug("Cache miss for key: {}", key);
+            if (cachedStation != null && cachedStation.getLines() != null) {
+                cachedStation.getLines().forEach((lineId, lineData) -> {
+                    // Filter by mode/line if requested
+                    if (modeList.isEmpty() || modeList.contains(lineId)) {
+                        if (lineData.getDirections() != null) {
+                            lineData.getDirections().forEach((direction, predictions) -> {
+                                // Filter by direction if requested
+                                if (directionList.isEmpty() || directionList.contains(direction)) {
+                                    String resultKey = String.format("%s-%s-%s",
+                                            normalize(stationId),
+                                            normalize(lineId),
+                                            normalize(direction));
+                                    results.put(resultKey, predictions);
+                                }
+                            });
+                        }
                     }
-                }
+                });
             }
         }
 
@@ -66,7 +70,7 @@ public class CacheRetrievalService {
 
     /**
      * Retrieve predictions from Redis cache and structure them as Station objects
-     * Supports comma-separated values for station, mode, and direction
+     * Uses consolidated Station keys and performs in-memory filtering
      * 
      * @param stations   Comma-separated station IDs
      * @param modes      Comma-separated mode/line IDs
@@ -74,58 +78,60 @@ public class CacheRetrievalService {
      * @return List of Station objects with nested line and direction data
      */
     public List<Station> getStations(String stations, String modes, String directions) {
-        List<String> stationList = parseCommaSeparated(stations);
+        List<String> stationIds = parseCommaSeparated(stations);
         List<String> modeList = parseCommaSeparated(modes);
         List<String> directionList = parseCommaSeparated(directions);
 
-        // Map to hold station data: stationId -> Station
-        Map<String, Station> stationMap = new HashMap<>();
+        List<Station> results = new ArrayList<>();
 
-        // Generate all combinations and fetch from cache
-        for (String stationId : stationList) {
-            for (String mode : modeList) {
-                for (String direction : directionList) {
-                    String key = String.format("%s-%s-%s",
-                            normalize(stationId),
-                            normalize(mode),
-                            normalize(direction));
+        for (String stationId : stationIds) {
+            String redisKey = "Station_" + normalize(stationId);
+            Station station = redisService.get(redisKey, Station.class);
 
-                    DirectionPredictions predictions = redisService.get(key, DirectionPredictions.class);
-
-                    if (predictions != null) {
-                        log.debug("Cache hit for key: {}", key);
-
-                        // Get or create Station
-                        Station station = stationMap.computeIfAbsent(stationId, id -> Station.builder()
-                                .stationId(id)
-                                .stationName(predictions.getStationName())
-                                .lines(new HashMap<>())
-                                .build());
-
-                        // Get or create LineData
-                        LineData lineData = station.getLines().computeIfAbsent(mode, lineId -> LineData.builder()
-                                .lineId(lineId)
-                                .lineName(predictions.getLineName())
-                                .directions(new HashMap<>())
-                                .build());
-
-                        // Remove redundant metadata from inner objects for the API response
-                        // (They remain in Redis, but nulled here for the JSON response)
-                        predictions.setStationId(null);
-                        predictions.setStationName(null);
-                        predictions.setLineId(null);
-                        predictions.setLineName(null);
-
-                        // Add DirectionPredictions
-                        lineData.getDirections().put(direction, predictions);
-                    } else {
-                        log.debug("Cache miss for key: {}", key);
-                    }
+            if (station != null) {
+                // Filter the station's lines and directions in-memory
+                Station filteredStation = filterStation(station, modeList, directionList);
+                if (filteredStation != null) {
+                    results.add(filteredStation);
                 }
             }
         }
 
-        return new ArrayList<>(stationMap.values());
+        return results;
+    }
+
+    /**
+     * Helper to filter a Station's lines and directions
+     */
+    private Station filterStation(Station station, List<String> modeList, List<String> directionList) {
+        if (station.getLines() == null)
+            return null;
+
+        Map<String, LineData> filteredLines = new HashMap<>();
+
+        station.getLines().forEach((lineId, lineData) -> {
+            if (modeList.isEmpty() || modeList.contains(lineId)) {
+                if (lineData.getDirections() != null) {
+                    Map<String, DirectionPredictions> filteredDirections = new HashMap<>();
+                    lineData.getDirections().forEach((direction, predictions) -> {
+                        if (directionList.isEmpty() || directionList.contains(direction)) {
+                            filteredDirections.put(direction, predictions);
+                        }
+                    });
+
+                    if (!filteredDirections.isEmpty()) {
+                        lineData.setDirections(filteredDirections);
+                        filteredLines.put(lineId, lineData);
+                    }
+                }
+            }
+        });
+
+        if (filteredLines.isEmpty())
+            return null;
+
+        station.setLines(filteredLines);
+        return station;
     }
 
     /**

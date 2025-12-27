@@ -1,5 +1,6 @@
 package com.mindthetime.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,12 +15,6 @@ import java.util.List;
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class DirectionPredictions {
-    private String stationId;
-    private String stationName;
-    private String lineId;
-    private String lineName;
-    private String mode;
-    private String direction;
-    private String lastUpdatedTime;
+    @JsonProperty("preds")
     private List<PredictionItem> predictions;
 }

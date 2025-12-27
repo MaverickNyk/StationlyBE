@@ -2,8 +2,8 @@ package com.mindthetime.backend.service;
 
 import com.mindthetime.backend.client.TflApiClient;
 import com.mindthetime.backend.model.ArrivalPrediction;
-import com.mindthetime.backend.model.DirectionPredictions;
 import com.mindthetime.backend.model.RefreshSummary;
+import com.mindthetime.backend.model.Station;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -120,26 +120,26 @@ public class TflPollingService {
 
             log.info("✅ STATUS: SUCCESS | Received {} arrivals from TfL API", arrivals.size());
 
-            // Transform into grouped predictions
-            log.info("🔄 Transforming data into grouped predictions...");
-            Map<String, DirectionPredictions> groupedPredictions = transformationService
-                    .transformToGroupedPredictions(arrivals);
+            // Transform into grouped Station objects
+            log.info("🔄 Transforming data into station-centric groups...");
+            Map<String, Station> groupedStations = transformationService
+                    .transformToStationGroups(arrivals);
 
             // Store in Redis and publish to FCM in parallel
-            log.info("⚡ Parallel processing started: Storing in Redis and publishing to FCM ({} topics)...",
-                    groupedPredictions.size());
+            log.info("⚡ Parallel processing started: Storing in Redis and publishing to FCM ({} stations)...",
+                    groupedStations.size());
 
             // 1. Redis Task
             CompletableFuture<Void> redisTask = CompletableFuture.runAsync(() -> {
-                Map<String, Object> redisData = new HashMap<>(groupedPredictions);
+                Map<String, Object> redisData = new HashMap<>(groupedStations);
                 redisService.saveAll(redisData, redisTtl);
             });
 
             // 2. FCM Task (Batch publishing)
             CompletableFuture<Integer> fcmTask = CompletableFuture.supplyAsync(() -> {
-                Map<String, Object> fcmData = new HashMap<>(groupedPredictions);
+                Map<String, Object> fcmData = new HashMap<>(groupedStations);
                 fcmService.publishAll(fcmData);
-                return groupedPredictions.size();
+                return groupedStations.size();
             });
 
             // Wait for both to complete
@@ -147,20 +147,20 @@ public class TflPollingService {
             int fcmCount = fcmTask.join();
 
             long duration = System.currentTimeMillis() - startMillis;
-            log.info("✅ SUMMARY: Mode={} | {} arrivals → {} cache keys → {} FCM topics | TTL: {}ms | Took: {}ms",
-                    mode, arrivals.size(), groupedPredictions.size(), fcmCount, redisTtl, duration);
+            log.info("✅ SUMMARY: Mode={} | {} arrivals → {} station keys → {} FCM topics | TTL: {}ms | Took: {}ms",
+                    mode, arrivals.size(), groupedStations.size(), fcmCount, redisTtl, duration);
 
             return RefreshSummary.builder()
                     .mode(mode)
                     .timestamp(startTime)
                     .status("SUCCESS")
                     .arrivalsReceived(arrivals.size())
-                    .cacheKeysCreated(groupedPredictions.size())
+                    .cacheKeysCreated(groupedStations.size())
                     .fcmTopicsPublished(fcmCount)
                     .ttlSeconds(redisTtl)
                     .processingTimeMs(duration)
-                    .message(String.format("Successfully processed %d arrivals into %d cache keys (Parallel)",
-                            arrivals.size(), groupedPredictions.size()))
+                    .message(String.format("Successfully processed %d arrivals into %d station keys (Parallel)",
+                            arrivals.size(), groupedStations.size()))
                     .build();
 
         } catch (Exception e) {

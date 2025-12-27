@@ -1,6 +1,7 @@
 package com.mindthetime.backend.controller;
 
 import com.mindthetime.backend.model.LineInfo;
+import com.mindthetime.backend.model.LineRouteResponse;
 import com.mindthetime.backend.model.StationBrief;
 import com.mindthetime.backend.model.TransportMode;
 import com.mindthetime.backend.service.MetaService;
@@ -32,5 +33,10 @@ public class MetaController {
     @GetMapping("/stations/{lineId}")
     public List<StationBrief> getStations(@PathVariable String lineId) {
         return metaService.getStationsOnLine(lineId);
+    }
+
+    @GetMapping("/route/{lineId}")
+    public LineRouteResponse getRoute(@PathVariable String lineId) {
+        return metaService.getLineRoute(lineId);
     }
 }

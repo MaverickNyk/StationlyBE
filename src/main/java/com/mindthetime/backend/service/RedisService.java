@@ -123,4 +123,24 @@ public class RedisService {
         redisTemplate.delete(key);
         log.debug("Deleted from Redis: key={}", key);
     }
+
+    /**
+     * Get all keys matching a pattern
+     * 
+     * @param pattern Glob pattern (e.g., "*")
+     * @return Set of matching keys
+     */
+    public java.util.Set<String> getKeys(String pattern) {
+        return redisTemplate.keys(pattern);
+    }
+
+    /**
+     * Flush the entire Redis database
+     */
+    public void flushAll() {
+        if (!redisEnabled)
+            return;
+        redisTemplate.getRequiredConnectionFactory().getConnection().flushAll();
+        log.info("🧹 Redis flushed successfully (all keys removed)");
+    }
 }
