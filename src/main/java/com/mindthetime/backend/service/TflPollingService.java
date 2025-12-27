@@ -35,6 +35,9 @@ public class TflPollingService {
     @Value("${spring.cache.redis.time-to-live}")
     private long redisTtl;
 
+    @Value("${redis.prediction.updates.enabled}")
+    private boolean redisPredictionUpdatesEnabled;
+
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /**
@@ -129,11 +132,11 @@ public class TflPollingService {
             log.info("⚡ Parallel processing started: Storing in Redis and publishing to FCM ({} stations)...",
                     groupedStations.size());
 
-            // 1. Redis Task
-            CompletableFuture<Void> redisTask = CompletableFuture.runAsync(() -> {
-                Map<String, Object> redisData = new HashMap<>(groupedStations);
-                redisService.saveAll(redisData, redisTtl);
-            });
+            // 1. Redis Task (if enabled) mostly disabled to save the write quota, FCM is
+            // the main one where it needs to be updated.
+            CompletableFuture<Void> redisTask = redisPredictionUpdatesEnabled
+                    ? CompletableFuture.runAsync(() -> redisService.saveAll(new HashMap<>(groupedStations), redisTtl))
+                    : CompletableFuture.completedFuture(null);
 
             // 2. FCM Task (Batch publishing)
             CompletableFuture<Integer> fcmTask = CompletableFuture.supplyAsync(() -> {
@@ -142,7 +145,7 @@ public class TflPollingService {
                 return groupedStations.size();
             });
 
-            // Wait for both to complete
+            // Wait for both to complete if redis is enabled else just the fcmtask
             CompletableFuture.allOf(redisTask, fcmTask).join();
             int fcmCount = fcmTask.join();
 

@@ -35,7 +35,7 @@ public class MetaController {
         return metaService.getStationsOnLine(lineId);
     }
 
-    @GetMapping("/route/{lineId}")
+    @GetMapping("/routes/{lineId}")
     public LineRouteResponse getRoute(@PathVariable String lineId) {
         return metaService.getLineRoute(lineId);
     }

@@ -18,9 +18,6 @@ public class RedisService {
     private final RedisTemplate<String, String> redisTemplate;
     private final ObjectMapper objectMapper;
 
-    @org.springframework.beans.factory.annotation.Value("${redis.enabled}")
-    private boolean redisEnabled;
-
     /**
      * Save an object to Redis with a specific TTL
      * 
@@ -29,10 +26,6 @@ public class RedisService {
      * @param ttlSeconds TTL in seconds
      */
     public void save(String key, Object value, long ttlSeconds) {
-        if (!redisEnabled) {
-            log.trace("Redis is disabled. Skipping save for key: {}", key);
-            return;
-        }
         try {
             String jsonValue = objectMapper.writeValueAsString(value);
             if (ttlSeconds > 0) {
@@ -54,10 +47,6 @@ public class RedisService {
      * @param ttlSeconds TTL in seconds (applied to all keys)
      */
     public void saveAll(Map<String, Object> data, long ttlSeconds) {
-        if (!redisEnabled) {
-            log.trace("Redis is disabled. Skipping batch save for {} items", data != null ? data.size() : 0);
-            return;
-        }
         if (data == null || data.isEmpty())
             return;
 
@@ -95,10 +84,6 @@ public class RedisService {
      * @return Deserialized object or null if not found
      */
     public <T> T get(String key, Class<T> valueType) {
-        // if (!redisEnabled) {
-        // log.trace("Redis is disabled. Skipping get for key: {}", key);
-        // return null;
-        // }
         try {
             String jsonValue = redisTemplate.opsForValue().get(key);
             if (jsonValue != null) {
@@ -116,10 +101,6 @@ public class RedisService {
      * @param key Redis key
      */
     public void delete(String key) {
-        if (!redisEnabled) {
-            log.trace("Redis is disabled. Skipping delete for key: {}", key);
-            return;
-        }
         redisTemplate.delete(key);
         log.debug("Deleted from Redis: key={}", key);
     }
@@ -138,8 +119,6 @@ public class RedisService {
      * Flush the entire Redis database
      */
     public void flushAll() {
-        if (!redisEnabled)
-            return;
         redisTemplate.getRequiredConnectionFactory().getConnection().flushAll();
         log.info("🧹 Redis flushed successfully (all keys removed)");
     }
