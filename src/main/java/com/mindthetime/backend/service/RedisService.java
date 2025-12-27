@@ -95,10 +95,10 @@ public class RedisService {
      * @return Deserialized object or null if not found
      */
     public <T> T get(String key, Class<T> valueType) {
-        if (!redisEnabled) {
-            log.trace("Redis is disabled. Skipping get for key: {}", key);
-            return null;
-        }
+        // if (!redisEnabled) {
+        // log.trace("Redis is disabled. Skipping get for key: {}", key);
+        // return null;
+        // }
         try {
             String jsonValue = redisTemplate.opsForValue().get(key);
             if (jsonValue != null) {

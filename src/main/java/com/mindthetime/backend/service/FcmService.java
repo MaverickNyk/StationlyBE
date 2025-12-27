@@ -138,9 +138,9 @@ public class FcmService {
 
         log.info("🚀 Sending {} FCM messages in batch...", messages.size());
 
-        // Chunk messages to 500 (Firebase Admin SDK limit for sendEach)
-        for (int i = 0; i < messages.size(); i += 500) {
-            List<Message> chunk = messages.subList(i, Math.min(i + 500, messages.size()));
+        // Chunk messages to 100 (reduced from 500 for better reliability/visibility)
+        for (int i = 0; i < messages.size(); i += 100) {
+            List<Message> chunk = messages.subList(i, Math.min(i + 100, messages.size()));
             try {
                 BatchResponse response = FirebaseMessaging.getInstance().sendEach(chunk);
                 log.info("✅ Batch sent {} messages. Success: {}, Failure: {}",

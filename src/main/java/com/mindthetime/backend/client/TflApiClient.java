@@ -23,6 +23,9 @@ public class TflApiClient {
     public TflApiClient(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder
                 .baseUrl("https://api.tfl.gov.uk")
+                .codecs(configurer -> configurer
+                        .defaultCodecs()
+                        .maxInMemorySize(2 * 1024 * 1024)) // 2MB
                 .build();
     }
 
@@ -50,6 +53,48 @@ public class TflApiClient {
                 .bodyToFlux(ArrivalPrediction.class)
                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                 .collectList()
+                .block();
+    }
+
+    public List<java.util.Map<String, Object>> getTransportModes() {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Journey/Meta/Modes")
+                        .queryParam("app_key", appKey)
+                        .build())
+                .retrieve()
+                .bodyToMono(
+                        new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                        })
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
+                .block();
+    }
+
+    public List<java.util.Map<String, Object>> getLinesByMode(String mode) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Line/Mode/{mode}")
+                        .queryParam("app_key", appKey)
+                        .build(mode))
+                .retrieve()
+                .bodyToMono(
+                        new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                        })
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
+                .block();
+    }
+
+    public List<java.util.Map<String, Object>> getStopPointsByLine(String lineId) {
+        return webClient.get()
+                .uri(uriBuilder -> uriBuilder
+                        .path("/Line/{lineId}/StopPoints")
+                        .queryParam("app_key", appKey)
+                        .build(lineId))
+                .retrieve()
+                .bodyToMono(
+                        new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                        })
+                .timeout(java.time.Duration.ofSeconds(apiTimeout))
                 .block();
     }
 }
