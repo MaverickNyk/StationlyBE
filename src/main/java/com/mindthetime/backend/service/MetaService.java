@@ -28,7 +28,8 @@ public class MetaService {
 
     // Exemption list for modes that are TflService but we don't want to show
     private static final Set<String> EXEMPT_MODES = Set.of(
-            "national-rail", "tram", "river-bus", "cable-car", "river-tour");
+            "national-rail", "tram", "river-bus", "cable-car", "river-tour", "cycle-hire", "replacement-bus",
+            "river-tour");
 
     // Display name mapping
     private static final Map<String, String> DISPLAY_NAME_MAP = Map.of(
