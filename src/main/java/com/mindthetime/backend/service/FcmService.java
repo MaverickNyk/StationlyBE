@@ -14,7 +14,9 @@ import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @Slf4j
@@ -133,27 +135,38 @@ public class FcmService {
             return;
         }
 
-        log.info("🚀 Sending {} FCM messages in parallel...", topicPayloads.size());
+        log.info("🚀 Sending {} FCM messages in parallel using FixedThreadPool...", topicPayloads.size());
 
         long start = System.currentTimeMillis();
-        // Use parallel stream to send messages concurrently.
-        // This is safe because each publishToTopic call is independent.
-        long successCount = topicPayloads.entrySet().parallelStream()
-                .map(entry -> {
-                    try {
-                        publishToTopic(entry.getKey(), entry.getValue());
-                        return true;
-                    } catch (Exception e) {
-                        log.error("❌ Failed to send individual FCM message for topic: {}", entry.getKey(), e);
-                        return false;
-                    }
-                })
-                .filter(success -> success)
-                .count();
 
-        long duration = System.currentTimeMillis() - start;
-        log.info("✅ Finished sending FCM messages. Total: {}, Success: {}, Time: {}ms",
-                topicPayloads.size(), successCount, duration);
+        // Use a high-concurrency pool for blocking I/O operations like network calls.
+        // Since we are on a stronger server, we can afford a larger pool.
+        var executor = java.util.concurrent.Executors.newFixedThreadPool(100);
+        try {
+            List<CompletableFuture<Boolean>> futures = topicPayloads.entrySet().stream()
+                    .map(entry -> CompletableFuture.supplyAsync(() -> {
+                        try {
+                            publishToTopic(entry.getKey(), entry.getValue());
+                            return true;
+                        } catch (Exception e) {
+                            log.error("❌ Failed to send individual FCM message for topic: {}", entry.getKey(), e);
+                            return false;
+                        }
+                    }, executor))
+                    .toList();
+
+            // Wait for all to complete
+            long successCount = futures.stream()
+                    .map(CompletableFuture::join)
+                    .filter(success -> success)
+                    .count();
+
+            long duration = System.currentTimeMillis() - start;
+            log.info("✅ Finished sending FCM messages. Total: {}, Success: {}, Time: {}ms",
+                    topicPayloads.size(), successCount, duration);
+        } finally {
+            executor.shutdown();
+        }
     }
 
     /**
