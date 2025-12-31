@@ -30,6 +30,19 @@ public class MetaService {
     private static final Set<String> EXEMPT_MODES = Set.of(
             "national-rail", "tram", "river-bus", "cable-car", "river-tour", "cycle-hire", "replacement-bus");
 
+    // Mapping of transport mode to its corresponding stopType for station filtering
+    private static final Map<String, String> MODE_STOPTYPE_MAP = Map.of(
+            "bus", "NaptanPublicBusCoachTram",
+            "tube", "NaptanMetroStation",
+            "underground", "NaptanMetroStation",
+            "overground", "NaptanRailStation",
+            "elizabeth-line", "NaptanRailStation",
+            "dlr", "NaptanMetroStation",
+            "national-rail", "NaptanRailStation",
+            "tram", "NaptanPublicBusCoachTram",
+            "river-bus", "NaptanFerryPort",
+            "cable-car", "NaptanCableCarStation");
+
     // Display name mapping
     private static final Map<String, String> DISPLAY_NAME_MAP = Map.of(
             "tube", "Tube",
@@ -99,13 +112,23 @@ public class MetaService {
 
         log.info("META: ⚪ Redis MISS for stations (line: {}). Fetching from TfL...", lineId);
         List<Map<String, Object>> rawStations = tflApiClient.getStopPointsByLine(lineId);
-        if (rawStations == null)
+        if (rawStations == null) {
             return Collections.emptyList();
+        }
 
         List<StationBrief> stations = rawStations.stream()
                 .filter(s -> {
                     String stopType = (String) s.get("stopType");
-                    return "NaptanMetroStation".equals(stopType) || "NaptanRailStation".equals(stopType);
+                    List<String> modes = (List<String>) s.get("modes");
+                    if (modes == null)
+                        return false;
+                    for (String mode : modes) {
+                        String mapped = MODE_STOPTYPE_MAP.get(mode.toLowerCase());
+                        if (mapped != null && mapped.equals(stopType)) {
+                            return true;
+                        }
+                    }
+                    return false;
                 })
                 .map(s -> {
                     List<Map<String, Object>> rawLines = (List<Map<String, Object>>) s.get("lines");
@@ -116,7 +139,6 @@ public class MetaService {
                                             .name((String) l.get("name"))
                                             .build())
                                     .collect(Collectors.toList());
-
                     return StationBrief.builder()
                             .stationId((String) s.get("naptanId"))
                             .stationName((String) s.get("commonName"))
