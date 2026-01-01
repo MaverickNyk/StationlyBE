@@ -17,14 +17,14 @@ import java.util.concurrent.TimeoutException;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class FirebaseCacheService {
+public class FirebaseDatabaseService {
 
-    private static final String CACHE_ROOT = "cache/metadata";
+    private static final String METADATA_ROOT = "metadata";
 
     /**
-     * Save an object to Firebase Cache
+     * Save an object to Firebase Database
      * 
-     * @param key   Cache key
+     * @param key   Database key
      * @param value Object to store
      */
     public void save(String key, Object value) {
@@ -32,18 +32,18 @@ public class FirebaseCacheService {
             return;
         }
         try {
-            DatabaseReference ref = FirebaseDatabase.getInstance().getReference(CACHE_ROOT).child(sanitizeKey(key));
+            DatabaseReference ref = FirebaseDatabase.getInstance().getReference(METADATA_ROOT).child(sanitizeKey(key));
             ref.setValueAsync(value);
-            log.trace("Saved to Firebase Cache: key={}", key);
+            log.trace("Saved to Firebase Database: key={}", key);
         } catch (Exception e) {
-            log.error("Failed to save to Firebase Cache for key: {}", key, e);
+            log.error("Failed to save to Firebase Database for key: {}", key, e);
         }
     }
 
     /**
-     * Get an object from Firebase Cache
+     * Get an object from Firebase Database
      * 
-     * @param key       Cache key
+     * @param key       Database key
      * @param valueType Class type to deserialize to
      * @return Deserialized object or null if not found/error
      */
@@ -53,7 +53,7 @@ public class FirebaseCacheService {
         }
 
         CompletableFuture<T> future = new CompletableFuture<>();
-        DatabaseReference ref = FirebaseDatabase.getInstance().getReference(CACHE_ROOT).child(sanitizeKey(key));
+        DatabaseReference ref = FirebaseDatabase.getInstance().getReference(METADATA_ROOT).child(sanitizeKey(key));
 
         ref.addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
@@ -63,7 +63,7 @@ public class FirebaseCacheService {
                         T value = dataSnapshot.getValue(valueType);
                         future.complete(value);
                     } catch (Exception e) {
-                        log.error("Failed to deserialize Firebase Cache data for key: {}", key, e);
+                        log.error("Failed to deserialize Firebase Database data for key: {}", key, e);
                         future.complete(null);
                     }
                 } else {
@@ -73,41 +73,41 @@ public class FirebaseCacheService {
 
             @Override
             public void onCancelled(DatabaseError databaseError) {
-                log.error("Firebase Cache read cancelled for key: {}. Error: {}", key, databaseError.getMessage());
+                log.error("Firebase Database read cancelled for key: {}. Error: {}", key, databaseError.getMessage());
                 future.complete(null);
             }
         });
 
         try {
-            // Wait for up to 5 seconds for metadata cache hit
+            // Wait for up to 5 seconds for metadata database hit
             return future.get(5, TimeUnit.SECONDS);
         } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            log.warn("Timeout/Error fetching from Firebase Cache for key: {}", key);
+            log.warn("Timeout/Error fetching from Firebase database for key: {}", key);
             return null;
         }
     }
 
     /**
-     * Delete a key from Firebase Cache
+     * Delete a key from Firebase Database
      * 
-     * @param key Cache key
+     * @param key Database key
      */
     public void delete(String key) {
         if (com.google.firebase.FirebaseApp.getApps().isEmpty()) {
             return;
         }
-        FirebaseDatabase.getInstance().getReference(CACHE_ROOT).child(sanitizeKey(key)).removeValueAsync();
+        FirebaseDatabase.getInstance().getReference(METADATA_ROOT).child(sanitizeKey(key)).removeValueAsync();
     }
 
     /**
-     * Clear the entire metadata cache
+     * Clear the entire metadata database
      */
     public void flushAll() {
         if (com.google.firebase.FirebaseApp.getApps().isEmpty()) {
             return;
         }
-        FirebaseDatabase.getInstance().getReference(CACHE_ROOT).removeValueAsync();
-        log.info("🧹 Firebase Metadata Cache cleared successfully");
+        FirebaseDatabase.getInstance().getReference(METADATA_ROOT).removeValueAsync();
+        log.info("🧹 Firebase Metadata Database cleared successfully");
     }
 
     private String sanitizeKey(String key) {

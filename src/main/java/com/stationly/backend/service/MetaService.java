@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 public class MetaService {
 
     private final TflApiClient tflApiClient;
-    private final FirebaseCacheService cacheService;
+    private final FirebaseDatabaseService cacheService;
 
     private static final String CACHE_KEY_MODES = "meta:modes";
     private static final String CACHE_KEY_LINES_PREFIX = "meta:lines:";

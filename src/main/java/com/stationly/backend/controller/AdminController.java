@@ -2,7 +2,7 @@ package com.stationly.backend.controller;
 
 import com.stationly.backend.model.RefreshSummary;
 import com.stationly.backend.model.LineStatusResponse;
-import com.stationly.backend.service.FirebaseCacheService;
+import com.stationly.backend.service.FirebaseDatabaseService;
 import com.stationly.backend.service.LineStatusService;
 import com.stationly.backend.service.TflPollingService;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +25,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @Tag(name = "Admin", description = "Administrative operations for manual data refreshing and cleanup")
 public class AdminController {
 
-    private final FirebaseCacheService cacheService;
+    private final FirebaseDatabaseService firebaseDatabaseService;
     private final TflPollingService tflPollingService;
     private final LineStatusService lineStatusService;
 
@@ -54,7 +54,7 @@ public class AdminController {
         log.info("🔥 ADMIN: Cleanup requested. Clearing Firebase metadata cache...");
 
         // Perform flush of Firebase metadata cache
-        cacheService.flushAll();
+        firebaseDatabaseService.flushAll();
 
         return ResponseEntity.ok("Cleanup completed successfully. Firebase metadata cache flushed.");
     }
