@@ -1,0 +1,172 @@
+package com.stationly.backend.service;
+
+import com.stationly.backend.client.TflApiClient;
+import com.stationly.backend.model.ArrivalPrediction;
+import com.stationly.backend.model.RefreshSummary;
+import com.stationly.backend.model.Station;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class TflPollingService {
+
+        private final TflApiClient tflApiClient;
+        private final DataTransformationService transformationService;
+        private final FcmService fcmService;
+
+        @Value("${tfl.transport.modes}")
+        private String tflTransportModes;
+
+        private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        /**
+         * Poll TfL API every 60 seconds and update FCM topics
+         * Polls each configured mode separately
+         */
+        @Scheduled(fixedRateString = "${tfl.polling.interval:60000}")
+        public void pollAndUpdate() {
+                refreshAll();
+        }
+
+        /**
+         * Refresh all configured transport modes
+         * 
+         * @return List of summaries for each mode
+         */
+        public List<RefreshSummary> refreshAll() {
+                String timestamp = LocalDateTime.now().format(TIME_FORMATTER);
+                long startMillis = System.currentTimeMillis();
+
+                log.info("═══════════════════════════════════════════════════════════════════");
+                log.info("🚇 TFL REFRESH STARTED | Modes: {} | Time: {}", tflTransportModes.toUpperCase(), timestamp);
+                log.info("═══════════════════════════════════════════════════════════════════");
+
+                String[] modes = tflTransportModes.split(",");
+                var executor = java.util.concurrent.Executors.newFixedThreadPool(modes.length + 2);
+                try {
+                        // Process all modes in parallel
+                        List<CompletableFuture<RefreshSummary>> futures = Arrays.stream(modes)
+                                        .map(String::trim)
+                                        .filter(mode -> !mode.isEmpty())
+                                        .map(mode -> CompletableFuture.supplyAsync(() -> refreshMode(mode), executor))
+                                        .collect(Collectors.toList());
+
+                        // Wait for all modes to complete and gather summaries
+                        List<RefreshSummary> summaries = futures.stream()
+                                        .map(CompletableFuture::join)
+                                        .collect(Collectors.toList());
+
+                        long totalDuration = System.currentTimeMillis() - startMillis;
+                        log.info("═══════════════════════════════════════════════════════════════════");
+                        log.info("🚇 TFL REFRESH ENDED | Total Time: {}ms", totalDuration);
+                        log.info("═══════════════════════════════════════════════════════════════════");
+                        return summaries;
+                } finally {
+                        executor.shutdown();
+                }
+        }
+
+        /**
+         * Manually refresh data for a specific mode
+         * 
+         * @param mode Transport mode (tube, dlr, bus, etc.)
+         * @return Summary of the refresh operation
+         */
+        public RefreshSummary refreshMode(String mode) {
+                String timestamp = LocalDateTime.now().format(TIME_FORMATTER);
+                LocalDateTime startTime = LocalDateTime.now();
+                long startMillis = System.currentTimeMillis();
+
+                log.info("───────────────────────────────────────────────────────────────────");
+                log.info("🚇 POLLING MODE: {} | Time: {}", mode.toUpperCase(), timestamp);
+                log.info("───────────────────────────────────────────────────────────────────");
+
+                try {
+                        // Fetch arrivals from TfL API
+                        log.info("📡 Fetching arrivals from TfL API for mode: {}", mode);
+                        List<ArrivalPrediction> arrivals = tflApiClient.getArrivalsByMode(mode);
+
+                        if (arrivals == null || arrivals.isEmpty()) {
+                                long duration = System.currentTimeMillis() - startMillis;
+                                log.warn("⚠️  STATUS: NO DATA | No arrivals received from TfL API for mode: {} | Took: {}ms",
+                                                mode,
+                                                duration);
+
+                                return RefreshSummary.builder()
+                                                .mode(mode)
+                                                .timestamp(startTime)
+                                                .status("NO_DATA")
+                                                .arrivalsReceived(0)
+                                                .cacheKeysCreated(0)
+                                                .fcmTopicsPublished(0)
+                                                .ttlSeconds(0L)
+                                                .processingTimeMs(duration)
+                                                .message("No arrivals received from TfL API for mode: " + mode)
+                                                .build();
+                        }
+
+                        log.info("✅ STATUS: SUCCESS | Received {} arrivals from TfL API", arrivals.size());
+
+                        // Transform into grouped Station objects
+                        log.info("🔄 Transforming data into station-centric groups...");
+                        Map<String, Station> groupedStations = transformationService
+                                        .transformToStationGroups(arrivals);
+
+                        // Publish to FCM in batch
+                        log.info("⚡ Publishing to FCM ({} stations)...", groupedStations.size());
+
+                        Map<String, Object> fcmData = new HashMap<>(groupedStations);
+                        fcmService.publishAll(fcmData);
+                        int fcmCount = groupedStations.size();
+
+                        long duration = System.currentTimeMillis() - startMillis;
+                        log.info("✅ SUMMARY: Mode={} | {} arrivals → {} station keys → {} FCM topics | Took: {}ms",
+                                        mode, arrivals.size(), groupedStations.size(), fcmCount, duration);
+
+                        return RefreshSummary.builder()
+                                        .mode(mode)
+                                        .timestamp(startTime)
+                                        .status("SUCCESS")
+                                        .arrivalsReceived(arrivals.size())
+                                        .cacheKeysCreated(groupedStations.size())
+                                        .fcmTopicsPublished(fcmCount)
+                                        .ttlSeconds(0L)
+                                        .processingTimeMs(duration)
+                                        .message(String.format(
+                                                        "Successfully processed %d arrivals into %d station keys",
+                                                        arrivals.size(), groupedStations.size()))
+                                        .build();
+
+                } catch (Exception e) {
+                        long duration = System.currentTimeMillis() - startMillis;
+                        log.error("❌ STATUS: FAILED | Error during TfL polling for mode: {} | Took: {}ms", mode,
+                                        duration, e);
+
+                        return RefreshSummary.builder()
+                                        .mode(mode)
+                                        .timestamp(startTime)
+                                        .status("FAILED")
+                                        .arrivalsReceived(0)
+                                        .cacheKeysCreated(0)
+                                        .fcmTopicsPublished(0)
+                                        .ttlSeconds(0L)
+                                        .processingTimeMs(duration)
+                                        .message("Error during polling: " + e.getMessage())
+                                        .build();
+                }
+        }
+}
