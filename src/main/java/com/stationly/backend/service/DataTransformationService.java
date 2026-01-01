@@ -45,7 +45,7 @@ public class DataTransformationService {
         byStation.entrySet().parallelStream().forEach(entry -> {
             String stationId = entry.getKey();
             List<ArrivalPrediction> stationArrivals = entry.getValue();
-            String redisKey = "Station_" + normalize(stationId);
+            String stationKey = "Station_" + normalize(stationId);
 
             // Create Station
             Station station = Station.builder()
@@ -90,7 +90,7 @@ public class DataTransformationService {
 
             // Dynamic Pruning to fit FCM 4KB limit
             pruneToFitFCM(station);
-            stationGroups.put(redisKey, station);
+            stationGroups.put(stationKey, station);
         });
 
         log.debug("Transformed {} arrivals into {} station groups", arrivals.size(), stationGroups.size());

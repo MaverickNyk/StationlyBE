@@ -34,7 +34,7 @@ public class TflPollingService {
         private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
         /**
-         * Poll TfL API every 60 seconds and update Redis + FCM
+         * Poll TfL API every 60 seconds and update FCM topics
          * Polls each configured mode separately
          */
         @Scheduled(fixedRateString = "${tfl.polling.interval:60000}")
