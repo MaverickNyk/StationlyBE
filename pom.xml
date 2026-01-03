@@ -76,6 +76,13 @@
 			<artifactId>oci-java-sdk-common-httpclient-jersey3</artifactId>
 			<version>3.33.0</version>
 		</dependency>
+
+		<!-- Google Cloud Firestore -->
+		<dependency>
+			<groupId>com.google.cloud</groupId>
+			<artifactId>google-cloud-firestore</artifactId>
+			<version>3.15.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>

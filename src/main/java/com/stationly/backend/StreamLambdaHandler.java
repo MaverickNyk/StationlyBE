@@ -8,7 +8,7 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 import com.stationly.backend.config.ApplicationContextHolder;
 import com.stationly.backend.service.TflPollingService;
-import com.stationly.backend.service.LineStatusService;
+import com.stationly.backend.service.LineService;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,8 +42,8 @@ public class StreamLambdaHandler implements RequestStreamHandler {
                 TflPollingService pollingService = ApplicationContextHolder.getBean(TflPollingService.class);
                 pollingService.refreshAll();
 
-                LineStatusService lineStatusService = ApplicationContextHolder.getBean(LineStatusService.class);
-                lineStatusService.pollLineStatuses();
+                LineService lineService = ApplicationContextHolder.getBean(LineService.class);
+                lineService.pollLineStatuses();
 
                 context.getLogger().log("✅ Scheduled refresh (Predictions & Line Status) completed successfully.");
                 return;

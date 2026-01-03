@@ -16,6 +16,9 @@ public class StationBrief {
     private String stationName;
     private List<LineSummary> lines;
 
+    // Flat list of line IDs for efficient Firestore array queries
+    private List<String> lineIds;
+
     @Data
     @Builder
     @NoArgsConstructor

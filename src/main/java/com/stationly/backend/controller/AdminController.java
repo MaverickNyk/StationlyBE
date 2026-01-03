@@ -2,8 +2,12 @@ package com.stationly.backend.controller;
 
 import com.stationly.backend.model.RefreshSummary;
 import com.stationly.backend.model.LineStatusResponse;
-import com.stationly.backend.service.FirebaseDatabaseService;
-import com.stationly.backend.service.LineStatusService;
+import com.stationly.backend.model.TransportMode;
+import com.stationly.backend.model.LineInfo;
+import com.stationly.backend.model.StationBrief;
+import com.stationly.backend.model.LineRouteResponse;
+import com.stationly.backend.repository.DataRepository;
+import com.stationly.backend.service.LineService;
 import com.stationly.backend.service.TflPollingService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,9 +29,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 @Tag(name = "Admin", description = "Administrative operations for manual data refreshing and cleanup")
 public class AdminController {
 
-    private final FirebaseDatabaseService firebaseDatabaseService;
+    private final DataRepository<TransportMode, String> modeRepository;
+    private final DataRepository<LineInfo, String> lineRepository;
+    private final DataRepository<StationBrief, String> stationRepository;
+    private final DataRepository<LineRouteResponse, String> routeRepository;
+    private final DataRepository<LineStatusResponse, String> lineStatusRepository;
     private final TflPollingService tflPollingService;
-    private final LineStatusService lineStatusService;
+    private final LineService lineService;
 
     @Operation(summary = "Trigger Manual Refresh", description = "Manually triggers a data refresh for all configured transport modes from TFL API.")
     @ApiResponse(responseCode = "200", description = "Refresh completed successfully")
@@ -43,19 +51,23 @@ public class AdminController {
     @GetMapping("/status/refresh")
     public ResponseEntity<List<LineStatusResponse>> refreshLineStatuses() {
         log.info("🔄 ADMIN: Manual line status refresh triggered");
-        List<LineStatusResponse> statuses = lineStatusService.pollLineStatuses();
+        List<LineStatusResponse> statuses = lineService.pollLineStatuses();
         return ResponseEntity.ok(statuses);
     }
 
-    @Operation(summary = "System Cleanup", description = "Clears all metadata from Firebase and sends a generalized 'CLEAR' signal (if applicable) to reset client state.")
+    @Operation(summary = "System Cleanup", description = "Clears all cached data from Firestore to reset state.")
     @ApiResponse(responseCode = "200", description = "Cleanup completed")
     @GetMapping("/cleanup")
     public ResponseEntity<String> cleanup() {
-        log.info("🔥 ADMIN: Cleanup requested. Clearing Firebase metadata cache...");
+        log.info("🔥 ADMIN: Cleanup requested. Clearing Firestore data cache...");
 
-        // Perform flush of Firebase metadata cache
-        firebaseDatabaseService.flushAll();
+        // Perform flush of all Firestore collections
+        modeRepository.deleteAll();
+        lineRepository.deleteAll();
+        stationRepository.deleteAll();
+        routeRepository.deleteAll();
+        lineStatusRepository.deleteAll();
 
-        return ResponseEntity.ok("Cleanup completed successfully. Firebase metadata cache flushed.");
+        return ResponseEntity.ok("Cleanup completed successfully. All Firestore data flushed.");
     }
 }

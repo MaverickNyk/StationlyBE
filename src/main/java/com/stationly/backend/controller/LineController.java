@@ -2,9 +2,8 @@ package com.stationly.backend.controller;
 
 import com.stationly.backend.model.LineInfo;
 import com.stationly.backend.model.LineRouteResponse;
-import com.stationly.backend.model.StationBrief;
-import com.stationly.backend.model.TransportMode;
-import com.stationly.backend.service.MetaService;
+import com.stationly.backend.model.LineStatusResponse;
+import com.stationly.backend.service.LineService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,40 +13,35 @@ import org.springframework.web.bind.annotation.RestController;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/meta")
+@RequestMapping("/api/v1/lines")
 @RequiredArgsConstructor
-@Tag(name = "Meta Data", description = "Static/Meta data for Transport Modes, Lines, and Stations")
-public class MetaController {
+@Tag(name = "Lines", description = "Transport lines data including status")
+public class LineController {
 
-    private final MetaService metaService;
-
-    @Operation(summary = "Get Transport Modes", description = "Retrieves all supported transport modes (e.g., tube, bus, dlr).")
-    @GetMapping("/modes")
-    public List<TransportMode> getModes() {
-        return metaService.getModes();
-    }
+    private final LineService lineService;
 
     @Operation(summary = "Get Lines by Mode", description = "Retrieves all lines for a specific transport mode.")
-    @GetMapping("/lines/{mode}")
-    public List<LineInfo> getLines(
+    @GetMapping("/mode/{mode}")
+    public List<LineInfo> getLinesByMode(
             @Parameter(description = "Transport mode ID (e.g. tube)", required = true) @PathVariable String mode) {
-        return metaService.getLines(mode);
-    }
-
-    @Operation(summary = "Get Stations on Line", description = "Retrieves all stations associated with a specific line.")
-    @GetMapping("/stations/{lineId}")
-    public List<StationBrief> getStations(
-            @Parameter(description = "Line ID (e.g. northern)", required = true) @PathVariable String lineId) {
-        return metaService.getStationsOnLine(lineId);
+        return lineService.getLinesByMode(mode);
     }
 
     @Operation(summary = "Get Line Route", description = "Retrieves the ordered route of stations for a specific line, including branches.")
-    @GetMapping("/routes/{lineId}")
+    @GetMapping("/{lineId}/route")
     public LineRouteResponse getRoute(
             @Parameter(description = "Line ID (e.g. victoria)", required = true) @PathVariable String lineId) {
-        return metaService.getLineRoute(lineId);
+        return lineService.getLineRoute(lineId);
+    }
+
+    @Operation(summary = "Get All Line Statuses", description = "Retrieves the latest status for all TFL transport lines (e.g., Tube, DLR, Overground) from Firestore cache.")
+    @ApiResponse(responseCode = "200", description = "Successful retrieval")
+    @GetMapping("/status")
+    public List<LineStatusResponse> getLineStatuses() {
+        return lineService.getLineStatuses();
     }
 }
