@@ -83,6 +83,11 @@
 			<artifactId>google-cloud-firestore</artifactId>
 			<version>3.15.0</version>
 		</dependency>
+		<dependency>
+			<groupId>ch.hsr</groupId>
+			<artifactId>geohash</artifactId>
+			<version>1.4.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>

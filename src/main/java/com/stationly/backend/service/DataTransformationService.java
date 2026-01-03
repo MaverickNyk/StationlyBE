@@ -30,10 +30,11 @@ public class DataTransformationService {
      * Key pattern: "Station_<stationId>"
      * 
      * @param arrivals Raw TfL arrival predictions
-     * @return Map with key pattern "Station_<stationId>" and Station as value
+     * @return Map with key pattern "Station_<stationId>" and StationPredictions as
+     *         value
      */
-    public Map<String, Station> transformToStationGroups(List<ArrivalPrediction> arrivals) {
-        Map<String, Station> stationGroups = new java.util.concurrent.ConcurrentHashMap<>();
+    public Map<String, StationPredictions> transformToStationGroups(List<ArrivalPrediction> arrivals) {
+        Map<String, StationPredictions> stationGroups = new java.util.concurrent.ConcurrentHashMap<>();
         String now = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME);
 
         // Group by StationId
@@ -47,8 +48,8 @@ public class DataTransformationService {
             List<ArrivalPrediction> stationArrivals = entry.getValue();
             String stationKey = "Station_" + normalize(stationId);
 
-            // Create Station
-            Station station = Station.builder()
+            // Create StationPredictions
+            StationPredictions station = StationPredictions.builder()
                     .stationId(stationId)
                     .stationName(stationArrivals.get(0).getStationName())
                     .lastUpdatedTime(now)
@@ -102,7 +103,7 @@ public class DataTransformationService {
      * size
      * is under 4000 bytes (to safely fit in FCM 4096 byte data limit).
      */
-    private void pruneToFitFCM(Station station) {
+    private void pruneToFitFCM(StationPredictions station) {
         try {
             byte[] bytes = objectMapper.writeValueAsBytes(station);
             if (bytes.length <= 4000) {
@@ -160,6 +161,9 @@ public class DataTransformationService {
                 .expectedArrival(arrival.getExpectedArrival() != null
                         ? arrival.getExpectedArrival().format(DateTimeFormatter.ISO_INSTANT)
                         : null)
+                .displayName((arrival.getTowards() != null && !arrival.getTowards().isEmpty())
+                        ? arrival.getTowards()
+                        : arrival.getDestinationName())
                 .build();
     }
 }

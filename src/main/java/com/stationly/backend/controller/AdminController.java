@@ -4,7 +4,7 @@ import com.stationly.backend.model.RefreshSummary;
 import com.stationly.backend.model.LineStatusResponse;
 import com.stationly.backend.model.TransportMode;
 import com.stationly.backend.model.LineInfo;
-import com.stationly.backend.model.StationBrief;
+import com.stationly.backend.model.Station;
 import com.stationly.backend.model.LineRouteResponse;
 import com.stationly.backend.repository.DataRepository;
 import com.stationly.backend.service.LineService;
@@ -31,7 +31,7 @@ public class AdminController {
 
     private final DataRepository<TransportMode, String> modeRepository;
     private final DataRepository<LineInfo, String> lineRepository;
-    private final DataRepository<StationBrief, String> stationRepository;
+    private final DataRepository<Station, String> stationRepository;
     private final DataRepository<LineRouteResponse, String> routeRepository;
     private final DataRepository<LineStatusResponse, String> lineStatusRepository;
     private final TflPollingService tflPollingService;

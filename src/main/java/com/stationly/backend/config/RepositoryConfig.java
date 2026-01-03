@@ -33,12 +33,12 @@ public class RepositoryConfig {
     }
 
     @Bean
-    public DataRepository<StationBrief, String> stationRepository(Firestore firestore) {
+    public DataRepository<Station, String> stationRepository(Firestore firestore) {
         return new GenericFirestoreRepository<>(
                 firestore,
                 "stations",
-                StationBrief.class,
-                StationBrief::getStationId);
+                Station.class,
+                Station::getNaptanId);
     }
 
     @Bean

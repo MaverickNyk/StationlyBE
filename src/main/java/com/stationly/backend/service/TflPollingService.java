@@ -3,7 +3,7 @@ package com.stationly.backend.service;
 import com.stationly.backend.client.TflApiClient;
 import com.stationly.backend.model.ArrivalPrediction;
 import com.stationly.backend.model.RefreshSummary;
-import com.stationly.backend.model.Station;
+import com.stationly.backend.model.StationPredictions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -126,7 +126,7 @@ public class TflPollingService {
 
                         // Transform into grouped Station objects
                         log.info("🔄 Transforming data into station-centric groups...");
-                        Map<String, Station> groupedStations = transformationService
+                        Map<String, StationPredictions> groupedStations = transformationService
                                         .transformToStationGroups(arrivals);
 
                         // Publish to FCM in batch

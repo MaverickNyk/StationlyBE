@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
 import java.util.List;
+import java.util.Map;
 
 @Component
 public class TflApiClient {
@@ -56,7 +57,7 @@ public class TflApiClient {
                                 .block();
         }
 
-        public List<java.util.Map<String, Object>> getTransportModes() {
+        public List<Map<String, Object>> getTransportModes() {
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Journey/Meta/Modes")
@@ -64,13 +65,13 @@ public class TflApiClient {
                                                 .build())
                                 .retrieve()
                                 .bodyToMono(
-                                                new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                                                new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {
                                                 })
                                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                                 .block();
         }
 
-        public List<java.util.Map<String, Object>> getLinesByMode(String mode) {
+        public List<Map<String, Object>> getLinesByMode(String mode) {
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/Mode/{mode}")
@@ -78,13 +79,13 @@ public class TflApiClient {
                                                 .build(mode))
                                 .retrieve()
                                 .bodyToMono(
-                                                new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                                                new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {
                                                 })
                                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                                 .block();
         }
 
-        public List<java.util.Map<String, Object>> getStopPointsByLine(String lineId) {
+        public List<Map<String, Object>> getStopPointsByLine(String lineId) {
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/{lineId}/StopPoints")
@@ -92,26 +93,40 @@ public class TflApiClient {
                                                 .build(lineId))
                                 .retrieve()
                                 .bodyToMono(
-                                                new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                                                new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {
                                                 })
                                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                                 .block();
         }
 
-        public java.util.Map<String, Object> getLineRoute(String lineId) {
+        public Map<String, Object> getLineRoute(String lineId) {
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/{lineId}/Route")
                                                 .queryParam("app_key", appKey)
                                                 .build(lineId))
                                 .retrieve()
-                                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<java.util.Map<String, Object>>() {
+                                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {
                                 })
                                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                                 .block();
         }
 
-        public List<java.util.Map<String, Object>> getLineStatuses(String modes) {
+        public Map<String, Object> getRouteSequence(String lineId, String direction) {
+                return webClient.get()
+                                .uri(uriBuilder -> uriBuilder
+                                                .path("/Line/{lineId}/Route/Sequence/{direction}")
+                                                .queryParam("app_key", appKey)
+                                                .queryParam("excludeCrowding", true)
+                                                .build(lineId, direction))
+                                .retrieve()
+                                .bodyToMono(new org.springframework.core.ParameterizedTypeReference<Map<String, Object>>() {
+                                })
+                                .timeout(java.time.Duration.ofSeconds(apiTimeout))
+                                .block();
+        }
+
+        public List<Map<String, Object>> getLineStatuses(String modes) {
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/Mode/{modes}/Status")
@@ -119,7 +134,7 @@ public class TflApiClient {
                                                 .build(modes))
                                 .retrieve()
                                 .bodyToMono(
-                                                new org.springframework.core.ParameterizedTypeReference<List<java.util.Map<String, Object>>>() {
+                                                new org.springframework.core.ParameterizedTypeReference<List<Map<String, Object>>>() {
                                                 })
                                 .timeout(java.time.Duration.ofSeconds(apiTimeout))
                                 .block();
