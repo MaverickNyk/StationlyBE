@@ -27,6 +27,7 @@ public class TflPollingService {
         private final TflApiClient tflApiClient;
         private final DataTransformationService transformationService;
         private final FcmService fcmService;
+        private final MonitoringService monitoringService;
 
         @Value("${tfl.transport.modes}")
         private String tflTransportModes;
@@ -71,6 +72,7 @@ public class TflPollingService {
                                         .collect(Collectors.toList());
 
                         long totalDuration = System.currentTimeMillis() - startMillis;
+                        monitoringService.recordPollingDuration("total", totalDuration, "SUCCESS");
                         log.info("═══════════════════════════════════════════════════════════════════");
                         log.info("🚇 TFL REFRESH ENDED | Total Time: {}ms", totalDuration);
                         log.info("═══════════════════════════════════════════════════════════════════");
@@ -106,6 +108,7 @@ public class TflPollingService {
                                                 mode,
                                                 duration);
 
+                                monitoringService.recordPollingDuration(mode, duration, "NO_DATA");
                                 return RefreshSummary.builder()
                                                 .mode(mode)
                                                 .timestamp(startTime)
@@ -137,6 +140,9 @@ public class TflPollingService {
                         log.info("✅ SUMMARY: Mode={} | {} arrivals → {} station keys → {} FCM topics | Took: {}ms",
                                         mode, arrivals.size(), groupedStations.size(), fcmCount, duration);
 
+                        monitoringService.recordPollingDuration(mode, duration, "SUCCESS");
+                        monitoringService.recordArrivalsCount(mode, arrivals.size());
+
                         return RefreshSummary.builder()
                                         .mode(mode)
                                         .timestamp(startTime)
@@ -155,6 +161,8 @@ public class TflPollingService {
                         long duration = System.currentTimeMillis() - startMillis;
                         log.error("❌ STATUS: FAILED | Error during TfL polling for mode: {} | Took: {}ms", mode,
                                         duration, e);
+
+                        monitoringService.recordPollingDuration(mode, duration, "FAILED");
 
                         return RefreshSummary.builder()
                                         .mode(mode)

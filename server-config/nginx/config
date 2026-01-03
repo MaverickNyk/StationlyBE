@@ -1,0 +1,39 @@
+server {
+    listen 80;
+    server_name api.stationly.co.uk;
+
+    # 1. Straight to Docs: http: //api.stationly.co.uk -> https://.../docs
+    location = / {
+        return 301 https: //api.stationly.co.uk/StationlyBE/docs;
+    }
+
+    # 2. Upgrade everything else: http: //api.stationly.co.uk/path -> https://api.stationly.co.uk/path
+    location / {
+        return 301 https: //$host$request_uri;
+    }
+}
+
+server {
+    server_name api.stationly.co.uk;
+    listen 443 ssl; # managed by Certbot
+
+    # 3. Root redirect for HTTPS
+    location = / {
+        return 301 https: //api.stationly.co.uk/StationlyBE/docs;
+    }
+
+    # 4. Standard Proxy for API and Docs Assets
+    location / {
+        proxy_pass http: //localhost:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # ... Certbot SSL lines remain here ...
+    ssl_certificate /etc/letsencrypt/live/api.stationly.co.uk/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.stationly.co.uk/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+}
