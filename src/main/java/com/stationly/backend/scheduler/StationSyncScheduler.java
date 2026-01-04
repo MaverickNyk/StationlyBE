@@ -27,10 +27,10 @@ public class StationSyncScheduler {
     @Value("${tfl.transport.modes}")
     private String transportModes;
 
-    @EventListener(ApplicationReadyEvent.class)
-    public void syncStationOnStart() {
-        scheduleStationSync();
-    }
+    // @EventListener(ApplicationReadyEvent.class)
+    // public void syncStationOnStart() {
+    // scheduleStationSync();
+    // }
 
     // Simplified scheduler: Syncs ALL modes at the scheduled time.
     // Rate limiting is now handled by TflRateLimiter to avoid 429s.
