@@ -38,3 +38,4 @@ src/main/resources/application-remote.properties
 deploy.sh
 connect.sh
 test.json
+fcm_sync.json

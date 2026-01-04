@@ -153,17 +153,23 @@ public class DataTransformationService {
     }
 
     private PredictionItem toPredictionItem(ArrivalPrediction arrival) {
+        String rawName = (arrival.getTowards() != null && !arrival.getTowards().isEmpty())
+                ? arrival.getTowards()
+                : arrival.getDestinationName();
+
+        if (rawName != null) {
+            rawName = rawName.replace(" Underground Station", "")
+                    .replace(" Station", "")
+                    .trim();
+        }
+
         return PredictionItem.builder()
-                .destinationName(arrival.getDestinationName())
                 .destinationNaptanId(arrival.getDestinationNaptanId())
-                .towards(arrival.getTowards())
                 .platformName(arrival.getPlatformName())
                 .expectedArrival(arrival.getExpectedArrival() != null
                         ? arrival.getExpectedArrival().format(DateTimeFormatter.ISO_INSTANT)
                         : null)
-                .displayName((arrival.getTowards() != null && !arrival.getTowards().isEmpty())
-                        ? arrival.getTowards()
-                        : arrival.getDestinationName())
+                .displayName(rawName)
                 .build();
     }
 }

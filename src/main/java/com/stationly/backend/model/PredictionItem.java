@@ -11,14 +11,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class PredictionItem {
-    @JsonProperty("destName")
-    private String destinationName;
-
     @JsonProperty("destId")
     private String destinationNaptanId;
-
-    @JsonProperty("tow")
-    private String towards;
 
     @JsonProperty("id")
     private String platformName;
