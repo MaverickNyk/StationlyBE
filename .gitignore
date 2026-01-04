@@ -34,8 +34,4 @@ Thumbs.db
 # Local configuration
 src/main/resources/application-local.properties
 src/main/resources/application-remote.properties
-*firebase-service-account*.json
-deploy.sh
-connect.sh
-test.json
-fcm_sync.json
+local_scripts/
