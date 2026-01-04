@@ -51,7 +51,7 @@ public class AdminController {
     @GetMapping("/status/refresh")
     public ResponseEntity<List<LineStatusResponse>> refreshLineStatuses() {
         log.info("🔄 ADMIN: Manual line status refresh triggered");
-        List<LineStatusResponse> statuses = lineService.pollLineStatuses();
+        List<LineStatusResponse> statuses = lineService.syncLineStatuses();
         return ResponseEntity.ok(statuses);
     }
 

@@ -55,17 +55,17 @@ public class FirestoreConfig {
     }
 
     private GoogleCredentials getCredentials() throws IOException {
-        // Priority 1: JSON string (for Lambda/serverless)
+        // Priority 1: File path (Preferred for local/file-based envs)
+        if (credentialsPath != null && !credentialsPath.isEmpty()) {
+            log.info("🔐 Loading Firestore credentials from file: {}", credentialsPath);
+            return GoogleCredentials.fromStream(new FileInputStream(credentialsPath));
+        }
+
+        // Priority 2: JSON string (for Lambda/serverless if file not present)
         if (credentialsJson != null && !credentialsJson.isEmpty()) {
             log.info("🔐 Loading Firestore credentials from JSON string");
             InputStream stream = new ByteArrayInputStream(credentialsJson.getBytes(StandardCharsets.UTF_8));
             return GoogleCredentials.fromStream(stream);
-        }
-
-        // Priority 2: File path
-        if (credentialsPath != null && !credentialsPath.isEmpty()) {
-            log.info("🔐 Loading Firestore credentials from file: {}", credentialsPath);
-            return GoogleCredentials.fromStream(new FileInputStream(credentialsPath));
         }
 
         // Priority 3: Default credentials (GCP environment)

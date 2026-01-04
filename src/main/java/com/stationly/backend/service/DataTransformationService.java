@@ -42,8 +42,8 @@ public class DataTransformationService {
                 .filter(a -> a.getNaptanId() != null)
                 .collect(Collectors.groupingBy(ArrivalPrediction::getNaptanId));
 
-        // Process each station in parallel
-        byStation.entrySet().parallelStream().forEach(entry -> {
+        // Process each station sequentially to avoid thread exhaustion
+        byStation.entrySet().forEach(entry -> {
             String stationId = entry.getKey();
             List<ArrivalPrediction> stationArrivals = entry.getValue();
             String stationKey = "Station_" + normalize(stationId);

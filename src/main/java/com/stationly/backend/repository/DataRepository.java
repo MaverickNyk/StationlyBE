@@ -33,6 +33,11 @@ public interface DataRepository<T, ID> {
     List<T> findByField(String fieldName, Object fieldValue);
 
     /**
+     * Find all entities where an array field contains the given value.
+     */
+    List<T> findByArrayContains(String fieldName, Object value);
+
+    /**
      * Get all entities.
      */
     List<T> findAll();

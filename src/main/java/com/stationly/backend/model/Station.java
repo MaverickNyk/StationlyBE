@@ -22,6 +22,9 @@ public class Station {
     private double lon;
     private String geoHash;
     private String stopType;
+    // Optional fields from TfL API
+    private String indicator;
+    private String stopLetter;
     private String lastUpdatedTime;
 
     // Map of modes serving this station: ModeName -> ModeGroup

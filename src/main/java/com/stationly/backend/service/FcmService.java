@@ -36,6 +36,10 @@ public class FcmService {
     private final ObjectMapper objectMapper;
     private boolean fcmEnabled = false;
 
+    // Shared executor for FCM batch operations to prevent thread exhaustion
+    private final java.util.concurrent.ExecutorService fcmExecutor = java.util.concurrent.Executors
+            .newFixedThreadPool(10);
+
     public FcmService(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
     }
@@ -50,6 +54,7 @@ public class FcmService {
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                         .setDatabaseUrl(databaseUrl)
+                        .setThreadManager(new BoundedThreadManager())
                         .build();
 
                 if (FirebaseApp.getApps().isEmpty()) {
@@ -76,6 +81,7 @@ public class FcmService {
             FirebaseOptions options = FirebaseOptions.builder()
                     .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                     .setDatabaseUrl(databaseUrl)
+                    .setThreadManager(new BoundedThreadManager())
                     .build();
 
             if (FirebaseApp.getApps().isEmpty()) {
@@ -85,6 +91,40 @@ public class FcmService {
             log.info("✅ Firebase Cloud Messaging initialized successfully (from file: {})", serviceAccountPath);
         } catch (IOException e) {
             log.error("❌ Failed to initialize Firebase Cloud Messaging from file: {}", serviceAccountPath, e);
+        }
+    }
+
+    /**
+     * Custom ThreadManager to restrict the number of threads created by Firebase
+     * SDK.
+     * Prevents "firebase-default-xx" thread explosion.
+     */
+    private static class BoundedThreadManager extends com.google.firebase.ThreadManager {
+        @Override
+        protected java.util.concurrent.ExecutorService getExecutor(com.google.firebase.FirebaseApp app) {
+            // User requested 800 threads for high-throughput prediction sync
+            return java.util.concurrent.Executors.newFixedThreadPool(800, r -> {
+                Thread t = new Thread(r);
+                t.setName("firebase-bounded-" + t.getId());
+                t.setDaemon(true);
+                return t;
+            });
+        }
+
+        @Override
+        protected java.util.concurrent.ThreadFactory getThreadFactory() {
+            return r -> {
+                Thread t = new Thread(r);
+                t.setName("firebase-daemon-" + t.getId());
+                t.setDaemon(true);
+                return t;
+            };
+        }
+
+        @Override
+        protected void releaseExecutor(com.google.firebase.FirebaseApp app,
+                java.util.concurrent.ExecutorService executor) {
+            executor.shutdown();
         }
     }
 
@@ -169,19 +209,19 @@ public class FcmService {
 
             log.info("📦 Partitioned into {} batches of up to {}.", batches.size(), batchSize);
 
-            // Send batches in parallel using standard thread pool (since we are on Java 17)
-            var executor = java.util.concurrent.Executors.newFixedThreadPool(10);
+            // Send batches in parallel using shared thread pool
             try {
-                List<CompletableFuture<com.google.firebase.messaging.BatchResponse>> batchFutures = batches.stream()
-                        .map(batch -> CompletableFuture.supplyAsync(() -> {
-                            try {
-                                return FirebaseMessaging.getInstance().sendEach(batch);
-                            } catch (Exception e) {
-                                log.error("❌ Batch send failed", e);
-                                return null;
-                            }
-                        }, executor))
-                        .toList();
+                List<CompletableFuture<com.google.firebase.messaging.BatchResponse>> batchFutures = new ArrayList<>();
+                for (List<com.google.firebase.messaging.Message> batch : batches) {
+                    batchFutures.add(CompletableFuture.supplyAsync(() -> {
+                        try {
+                            return FirebaseMessaging.getInstance().sendEach(batch);
+                        } catch (Exception e) {
+                            log.error("❌ Batch send failed", e);
+                            return null;
+                        }
+                    }, fcmExecutor));
+                }
 
                 long successCount = 0;
                 for (CompletableFuture<com.google.firebase.messaging.BatchResponse> future : batchFutures) {
@@ -194,8 +234,8 @@ public class FcmService {
                 long duration = System.currentTimeMillis() - start;
                 log.info("✅ Finished sending FCM messages. Total: {}, Success: {}, Time: {}ms",
                         topicPayloads.size(), successCount, duration);
-            } finally {
-                executor.shutdown();
+            } catch (Exception e) {
+                log.error("❌ Error during batch sending", e);
             }
 
         } catch (Exception e) {

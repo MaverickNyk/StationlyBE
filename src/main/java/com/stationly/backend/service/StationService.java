@@ -19,27 +19,14 @@ public class StationService {
     private final TflApiClient tflApiClient;
     private final DataRepository<Station, String> stationRepository;
 
-    // Mapping of transport mode to its corresponding stopType for station filtering
-    private static final Map<String, String> MODE_STOPTYPE_MAP = Map.of(
-            "bus", "NaptanPublicBusCoachTram",
-            "tube", "NaptanMetroStation",
-            "underground", "NaptanMetroStation",
-            "overground", "NaptanRailStation",
-            "elizabeth-line", "NaptanRailStation",
-            "dlr", "NaptanMetroStation",
-            "national-rail", "NaptanRailStation",
-            "tram", "NaptanPublicBusCoachTram",
-            "river-bus", "NaptanFerryPort",
-            "cable-car", "NaptanCableCarStation");
-
     /**
      * Search stations based on search keys.
      * Keys can be: mode, lineId, mode_lineId, lineId_direction,
      * mode_lineId_direction
      */
-    public List<Station> searchStations(String key) {
-        List<Station> results = stationRepository.findByField("searchKeys", key);
-        log.info("🔍 Search stations with key '{}': found {}", key, results.size());
+    public List<Station> searchStations(String searchKey) {
+        List<Station> results = stationRepository.findByArrayContains("searchKeys", searchKey);
+        log.info("🔍 Search stations with searchKey '{}': found {}", searchKey, results.size());
         return results;
     }
 
@@ -48,6 +35,7 @@ public class StationService {
     }
 
     /**
+     * /**
      * Search stations within a given radius (km) of a location.
      */
     public List<Station> searchByLocation(double lat, double lon, double radiusKm) {
@@ -69,26 +57,193 @@ public class StationService {
         return R * c;
     }
 
-    public synchronized void syncLine(String lineId, String modeName) {
-        log.info("🔄 Starting sync for line: {}", lineId);
+    public void syncStationsByMode(String modeName) {
+        syncStationsByMode(modeName, lineId -> true);
+    }
 
-        // 1. Fetch Basic Station Info (StopPoints)
-        List<Map<String, Object>> stopPoints = tflApiClient.getStopPointsByLine(lineId);
-        if (stopPoints == null || stopPoints.isEmpty()) {
-            log.warn("⚠️ No stop points found for line: {}", lineId);
+    public void syncStationsByMode(String modeName, java.util.function.Predicate<String> lineFilter) {
+        log.info("🚀 Starting batch sync for mode: {}", modeName);
+
+        // 1. Fetch EVERYTHING from DB once.
+        log.info("📥 Fetching existing stations from Firestore...");
+        Map<String, Station> existingStations = getSavedStations();
+        log.info("✅ Loaded {} existing stations.", existingStations.size());
+
+        // 2. Fetch lines to process
+        List<Map<String, Object>> lines = tflApiClient.getLinesByMode(modeName);
+        if (lines == null || lines.isEmpty()) {
+            log.warn("⚠️ No lines found for mode: {}", modeName);
             return;
         }
 
-        // 2. Fetch Route Sequences (Inbound & Outbound) and parse Ordered Routes
+        // 3. Process lines in parallel to build "Fresh" state in-memory
+        Map<String, Station> freshStationsMap = new java.util.concurrent.ConcurrentHashMap<>();
+        // Pre-populate with existing so we merge INTO them (preserving other modes'
+        // data)
+        // Actually, better strategy:
+        // We want to update existing stations with new data for THIS mode.
+        // So we can clone existing map or just work on a fresh map and then merge.
+        // Working on a fresh map is safer for partial failures.
+        // But we need existing data to preserve OTHER modes.
+        // Let's use a concurrent map that starts as a copy of existing, BUT deep copy
+        // is hard.
+        // Alternative: Process fresh data into a "Fresh Changes" map.
+        // Then iterate Fresh Changes, merge with Existing to see if anything ACTUALLY
+        // changed.
+
+        // Rate limited to ~5 req/sec globally, so no need for many threads. 5 is ample.
+        java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
+        List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
+
+        for (Map<String, Object> line : lines) {
+            String lineId = (String) line.get("id");
+            if (!lineFilter.test(lineId))
+                continue;
+
+            futures.add(executor.submit(() -> {
+                try {
+                    processLineForBatch(lineId, modeName, freshStationsMap, existingStations); // Process into fresh map
+                } catch (Exception e) {
+                    log.error("❌ Failed to process line {}: {}", lineId, e.getMessage());
+                }
+            }));
+        }
+
+        // Wait for all
+        for (java.util.concurrent.Future<?> f : futures) {
+            try {
+                f.get();
+            } catch (Exception e) {
+                log.error("❌ Error waiting for future", e);
+            }
+        }
+        executor.shutdown();
+
+        // 4. Diff and Identify Changed Stations
+        log.info("🔄 Validating changes against existing DB...");
+        List<Station> changedStations = new ArrayList<>();
+        int totalProcessed = freshStationsMap.size();
+
+        for (Station fresh : freshStationsMap.values()) {
+            Station existing = existingStations.get(fresh.getNaptanId());
+            if (hasStationChanged(existing, fresh)) {
+                changedStations.add(fresh);
+            }
+        }
+
+        // 5. Save only changed stations
+        if (!changedStations.isEmpty()) {
+            log.info("💾 Found {} changed/new stations. Saving in batches...", changedStations.size());
+            saveInBatches(changedStations, modeName);
+        } else {
+            log.info("🎉 No changes detected for mode: {}. All up to date.", modeName);
+        }
+
+        log.info("✅ Sync completed for mode: {}. Processed {} unique stations.", modeName, totalProcessed);
+    }
+
+    private void saveInBatches(List<Station> stations, String modeName) {
+        List<Station> batch = new ArrayList<>();
+        int total = stations.size();
+        int savedCount = 0;
+        for (Station s : stations) {
+            batch.add(s);
+            if (batch.size() == 100) { // Batch size 100
+                stationRepository.saveAll(batch);
+                savedCount += batch.size();
+                log.info("💾 Saving batch of 100 stations (total: {}/{}) for mode: {}", savedCount, total, modeName);
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) {
+            stationRepository.saveAll(batch);
+            savedCount += batch.size();
+            log.info("💾 Saving final batch of {} stations (total: {}/{}) for mode: {}", batch.size(), savedCount,
+                    total,
+                    modeName);
+        }
+    }
+
+    private boolean hasStationChanged(Station existing, Station fresh) {
+        if (existing == null)
+            return true; // New station
+
+        // Compare fields
+        if (!Objects.equals(existing.getCommonName(), fresh.getCommonName()))
+            return true;
+        if (existing.getLat() != fresh.getLat())
+            return true;
+        if (existing.getLon() != fresh.getLon())
+            return true;
+        if (!Objects.equals(existing.getStopType(), fresh.getStopType()))
+            return true;
+        if (!Objects.equals(existing.getIndicator(), fresh.getIndicator()))
+            return true;
+        if (!Objects.equals(existing.getStopLetter(), fresh.getStopLetter()))
+            return true;
+
+        // Compare Modes/Lines - Deep compare needed?
+        // Basic map size checking + logic is complex.
+        // Since we rebuild the Station object based on fresh data (and merge prev
+        // modes),
+        // we can check if the serialized 'lines' or 'modes' differ.
+        // Simplest: If logic constructed 'fresh' by merging existing modes + new mode
+        // data,
+        // then 'fresh' contains the targeted state.
+        // For simplicity, lets rely on .equals of maps if Lombok @Data generates it
+        // correctly (it does).
+        return !Objects.equals(existing.getModes(), fresh.getModes()) ||
+                !Objects.equals(existing.getSearchKeys(), fresh.getSearchKeys());
+    }
+
+    public void syncLine(String lineId, String modeName) {
+        log.info("🔄 Starting sync for line: {}", lineId);
+        Map<String, Station> stationsToSave = new HashMap<>(); // Fresh map for single line
+        // We need existing stations to do a proper merge even for single line to avoid
+        // overwriting other modes
+        Map<String, Station> existingStations = getSavedStations();
+
+        try {
+            processLineForBatch(lineId, modeName, stationsToSave, existingStations);
+
+            // Diff and Save (Simplified for single line - just save what we processed if
+            // changed)
+            List<Station> changedStations = new ArrayList<>();
+            for (Station fresh : stationsToSave.values()) {
+                Station existing = existingStations.get(fresh.getNaptanId());
+                if (hasStationChanged(existing, fresh)) {
+                    changedStations.add(fresh);
+                }
+            }
+
+            if (!changedStations.isEmpty()) {
+                stationRepository.saveAll(changedStations);
+                log.info("✅ Sync completed for line: {}. Saved {} stations.", lineId, changedStations.size());
+            } else {
+                log.info("✅ Sync completed for line: {}. No changes detected.", lineId);
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Failed to sync line {}: {}", lineId, e.getMessage());
+        }
+    }
+
+    private void processLineForBatch(String lineId, String modeName, Map<String, Station> freshMap,
+            Map<String, Station> existingStations) {
+        // 1. Fetch Basic Station Info (StopPoints)
+        List<Map<String, Object>> stopPoints = tflApiClient.getStopPointsByLine(lineId);
+        if (stopPoints == null || stopPoints.isEmpty()) {
+            return;
+        }
+
+        // 2. Fetch Route Sequences (Inbound & Outbound)
         Set<String> inboundIds = fetchNaptanIdsFromRouteSequence(lineId, "inbound");
         Set<String> outboundIds = fetchNaptanIdsFromRouteSequence(lineId, "outbound");
 
-        // 3. Process each StopPoint
+        // 3. Process each StopPoint & Aggregate
         for (Map<String, Object> sp : stopPoints) {
-            processStopPoint(sp, lineId, modeName, inboundIds, outboundIds);
+            updateStationInBatch(sp, lineId, modeName, inboundIds, outboundIds, freshMap, existingStations);
         }
-
-        log.info("✅ Sync completed for line: {}", lineId);
     }
 
     private Set<String> fetchNaptanIdsFromRouteSequence(String lineId, String direction) {
@@ -115,30 +270,105 @@ public class StationService {
         }
     }
 
-    private void processStopPoint(Map<String, Object> sp, String lineId, String modeName,
-            Set<String> inboundIds, Set<String> outboundIds) {
+    private void updateStationInBatch(Map<String, Object> sp, String lineId, String modeName,
+            Set<String> inboundIds, Set<String> outboundIds, Map<String, Station> freshMap,
+            Map<String, Station> existingStations) {
+
         String stopType = (String) sp.get("stopType");
         String naptanId = (String) sp.get("naptanId");
 
-        String expectedStopType = MODE_STOPTYPE_MAP.get(modeName.toLowerCase());
+        String expectedStopType = com.stationly.backend.util.TflUtils.getExpectedStopType(modeName);
         if (expectedStopType == null || !expectedStopType.equals(stopType)) {
             return;
         }
 
-        Station station = stationRepository.findById(naptanId).orElse(Station.builder()
-                .naptanId(naptanId)
-                .modes(new HashMap<>())
-                .searchKeys(new ArrayList<>())
-                .build());
+        // We use compute to atomically update the FRESH map.
+        // We initialize fresh entry with existing state if available, OR new if not.
+        // BUT careful: if other threads updating same station, we want to merge.
+        // Since we are iterating lines in parallel, same station can be hit by multiple
+        // lines.
+        // compute is good for this.
 
-        // Update basic fields
+        freshMap.compute(naptanId, (key, currentFresh) -> {
+            if (currentFresh == null) {
+                // If not in fresh map, try to clone from existing or create new
+                Station existing = existingStations.get(key);
+                if (existing != null) {
+                    // Start with deep copy of existing to preserve other modes
+                    // Deep copy by serialization or manual builder. Manual is cheaper here given
+                    // structure.
+                    currentFresh = deepCopyStation(existing);
+                } else {
+                    currentFresh = Station.builder()
+                            .naptanId(naptanId)
+                            .modes(new HashMap<>())
+                            .searchKeys(new ArrayList<>())
+                            .build();
+                }
+            }
+            // Now merge current line info into currentFresh
+            mergeLineInfoIntoStation(currentFresh, sp, lineId, modeName, inboundIds, outboundIds);
+            return currentFresh;
+        });
+    }
+
+    private Station deepCopyStation(Station s) {
+        // Poor man's deep copy for known structure
+        Station.StationBuilder b = Station.builder()
+                .naptanId(s.getNaptanId())
+                .commonName(s.getCommonName())
+                .lat(s.getLat())
+                .lon(s.getLon())
+                .geoHash(s.getGeoHash())
+                .stopType(s.getStopType())
+                .indicator(s.getIndicator())
+                .stopLetter(s.getStopLetter())
+                .lastUpdatedTime(s.getLastUpdatedTime());
+
+        // Copy Modes deeply
+        Map<String, Station.ModeGroup> newModes = new HashMap<>();
+        if (s.getModes() != null) {
+            for (Map.Entry<String, Station.ModeGroup> entry : s.getModes().entrySet()) {
+                Station.ModeGroup oldMg = entry.getValue();
+                // Copy lines
+                Map<String, Station.LineDetails> newLines = new HashMap<>();
+                if (oldMg.getLines() != null) {
+                    for (Map.Entry<String, Station.LineDetails> lineEntry : oldMg.getLines().entrySet()) {
+                        Station.LineDetails oldLd = lineEntry.getValue();
+                        newLines.put(lineEntry.getKey(), Station.LineDetails.builder()
+                                .id(oldLd.getId())
+                                .name(oldLd.getName())
+                                .directions(new ArrayList<>(oldLd.getDirections()))
+                                .build());
+                    }
+                }
+                newModes.put(entry.getKey(), Station.ModeGroup.builder()
+                        .modeName(oldMg.getModeName())
+                        .lines(newLines)
+                        .build());
+            }
+        }
+        b.modes(newModes);
+        b.searchKeys(new ArrayList<>(s.getSearchKeys()));
+        return b.build();
+    }
+
+    private void mergeLineInfoIntoStation(Station station, Map<String, Object> sp, String lineId, String modeName,
+            Set<String> inboundIds, Set<String> outboundIds) {
+        // Update core fields (Always take latest from TfL)
         station.setCommonName((String) sp.get("commonName"));
         station.setLat((Double) sp.get("lat"));
         station.setLon((Double) sp.get("lon"));
-        station.setStopType(stopType);
+        station.setStopType((String) sp.get("stopType"));
         station.setGeoHash(GeoHash.geoHashStringWithCharacterPrecision(station.getLat(), station.getLon(), 9));
         station.setLastUpdatedTime(
                 java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ISO_DATE_TIME));
+
+        // Extract optional fields from TfL response
+        String indicator = (String) sp.get("indicator");
+        String stopLetter = (String) sp.get("stopLetter");
+        station.setIndicator(indicator);
+        station.setStopLetter(stopLetter);
 
         // Update Mode Group
         Station.ModeGroup modeGroup = station.getModes().computeIfAbsent(modeName, k -> Station.ModeGroup.builder()
@@ -146,14 +376,7 @@ public class StationService {
                 .lines(new HashMap<>())
                 .build());
 
-        // Determine Directions
-        List<String> directions = new ArrayList<>();
-        if (inboundIds.contains(naptanId))
-            directions.add("inbound");
-        if (outboundIds.contains(naptanId))
-            directions.add("outbound");
-
-        // Update Line Details within Mode Group
+        // Line Details
         Station.LineDetails lineDetails = modeGroup.getLines().computeIfAbsent(lineId,
                 k -> Station.LineDetails.builder()
                         .id(lineId)
@@ -161,18 +384,21 @@ public class StationService {
                         .directions(new ArrayList<>())
                         .build());
 
-        // Merge directions
-        for (String dir : directions) {
-            if (!lineDetails.getDirections().contains(dir)) {
-                lineDetails.getDirections().add(dir);
-            }
-        }
+        // Directions
+        if (inboundIds.contains(station.getNaptanId()) && !lineDetails.getDirections().contains("inbound"))
+            lineDetails.getDirections().add("inbound");
+        if (outboundIds.contains(station.getNaptanId()) && !lineDetails.getDirections().contains("outbound"))
+            lineDetails.getDirections().add("outbound");
 
-        // Regenerate Search Keys
         generateSearchKeys(station);
+    }
 
-        // Save
-        stationRepository.save(station);
+    private Map<String, Station> getSavedStations() {
+        // 1. Get everything once (1 network call)
+        List<Station> allStations = stationRepository.findAll();
+        Map<String, Station> stationMap = allStations.stream()
+                .collect(Collectors.toMap(Station::getNaptanId, s -> s));
+        return stationMap;
     }
 
     private void generateSearchKeys(Station station) {

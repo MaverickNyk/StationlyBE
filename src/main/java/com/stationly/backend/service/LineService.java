@@ -101,9 +101,7 @@ public class LineService {
         return response;
     }
 
-    // Line Status Methods
-    @Scheduled(fixedRateString = "${tfl.status.polling.interval:300000}") // Default 5 mins
-    public List<LineStatusResponse> pollLineStatuses() {
+    public List<LineStatusResponse> syncLineStatuses() {
         String[] modes = tflTransportModes.split(",");
         List<LineStatusResponse> allStatuses = new ArrayList<>();
 
@@ -165,7 +163,7 @@ public class LineService {
         List<LineStatusResponse> statuses = lineStatusRepository.findAll();
         if (statuses.isEmpty()) {
             log.info("DATA: ⚪ Firestore MISS for line statuses. Triggering poll...");
-            return pollLineStatuses();
+            return syncLineStatuses();
         }
         log.info("DATA: 🟢 Firestore HIT for {} line statuses", statuses.size());
         return statuses;

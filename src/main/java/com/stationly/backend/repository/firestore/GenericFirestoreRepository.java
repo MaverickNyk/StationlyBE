@@ -106,6 +106,24 @@ public class GenericFirestoreRepository<T, ID> implements DataRepository<T, ID> 
     }
 
     @Override
+    public List<T> findByArrayContains(String fieldName, Object value) {
+        if (firestore == null)
+            return new ArrayList<>();
+        List<T> results = new ArrayList<>();
+        try {
+            ApiFuture<QuerySnapshot> future = firestore.collection(collectionName)
+                    .whereArrayContains(fieldName, value)
+                    .get();
+            for (QueryDocumentSnapshot doc : future.get().getDocuments()) {
+                results.add(doc.toObject(entityClass));
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Failed to find by array contains {} in {}", fieldName, collectionName, e);
+        }
+        return results;
+    }
+
+    @Override
     public List<T> findAll() {
         if (firestore == null)
             return new ArrayList<>();

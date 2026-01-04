@@ -7,7 +7,7 @@ import com.stationly.backend.model.StationPredictions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
+
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -33,15 +33,6 @@ public class TflPollingService {
         private String tflTransportModes;
 
         private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        /**
-         * Poll TfL API every 60 seconds and update FCM topics
-         * Polls each configured mode separately
-         */
-        @Scheduled(fixedRateString = "${tfl.polling.interval:60000}")
-        public void pollAndUpdate() {
-                refreshAll();
-        }
 
         /**
          * Refresh all configured transport modes

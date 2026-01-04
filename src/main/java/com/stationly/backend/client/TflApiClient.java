@@ -11,6 +11,7 @@ import java.util.Map;
 public class TflApiClient {
 
         private final WebClient webClient;
+        private final TflRateLimiter rateLimiter;
 
         @Value("${tfl.app.key}")
         private String appKey;
@@ -21,7 +22,8 @@ public class TflApiClient {
         @Value("${tfl.api.timeout}")
         private int apiTimeout;
 
-        public TflApiClient(WebClient.Builder webClientBuilder) {
+        public TflApiClient(WebClient.Builder webClientBuilder, TflRateLimiter rateLimiter) {
+                this.rateLimiter = rateLimiter;
                 this.webClient = webClientBuilder
                                 .baseUrl("https://api.tfl.gov.uk")
                                 .codecs(configurer -> configurer
@@ -58,6 +60,7 @@ public class TflApiClient {
         }
 
         public List<Map<String, Object>> getTransportModes() {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Journey/Meta/Modes")
@@ -72,6 +75,7 @@ public class TflApiClient {
         }
 
         public List<Map<String, Object>> getLinesByMode(String mode) {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/Mode/{mode}")
@@ -86,6 +90,7 @@ public class TflApiClient {
         }
 
         public List<Map<String, Object>> getStopPointsByLine(String lineId) {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/{lineId}/StopPoints")
@@ -100,6 +105,7 @@ public class TflApiClient {
         }
 
         public Map<String, Object> getLineRoute(String lineId) {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/{lineId}/Route")
@@ -113,6 +119,7 @@ public class TflApiClient {
         }
 
         public Map<String, Object> getRouteSequence(String lineId, String direction) {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/{lineId}/Route/Sequence/{direction}")
@@ -127,6 +134,7 @@ public class TflApiClient {
         }
 
         public List<Map<String, Object>> getLineStatuses(String modes) {
+                rateLimiter.acquire();
                 return webClient.get()
                                 .uri(uriBuilder -> uriBuilder
                                                 .path("/Line/Mode/{modes}/Status")
