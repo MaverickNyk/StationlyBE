@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 
 @Component
-public class TflApiClient {
+public class TflApiClient implements TflApi {
 
         private final WebClient webClient;
         private final TflRateLimiter rateLimiter;

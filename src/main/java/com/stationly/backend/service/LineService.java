@@ -1,6 +1,6 @@
 package com.stationly.backend.service;
 
-import com.stationly.backend.client.TflApiClient;
+import com.stationly.backend.client.TflApi;
 import com.stationly.backend.model.LineInfo;
 import com.stationly.backend.model.LineRouteResponse;
 import com.stationly.backend.model.LineStatusResponse;
@@ -14,17 +14,20 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class LineService {
 
-    private final TflApiClient tflApiClient;
+    private final TflApi tflApiClient;
     private final DataRepository<LineInfo, String> lineRepository;
     private final DataRepository<LineRouteResponse, String> routeRepository;
     private final DataRepository<LineStatusResponse, String> lineStatusRepository;
+    private final NotificationService fcmService;
 
     @Value("${tfl.transport.modes}")
     private String tflTransportModes;
@@ -107,6 +110,10 @@ public class LineService {
         String[] modes = tflTransportModes.split(",");
         List<LineStatusResponse> allStatuses = new ArrayList<>();
 
+        // 1. Fetch existing statuses to compare against
+        Map<String, LineStatusResponse> existingStatuses = lineStatusRepository.findAll().stream()
+                .collect(Collectors.toMap(LineStatusResponse::getId, Function.identity(), (a, b) -> a));
+
         for (String mode : modes) {
             String trimmedMode = mode.trim();
             if (trimmedMode.isEmpty())
@@ -120,10 +127,40 @@ public class LineService {
                     continue;
                 }
 
-                List<LineStatusResponse> modeStatuses = rawStatuses.stream()
-                        .map(this::mapToLineStatusResponse)
-                        .collect(Collectors.toList());
-                allStatuses.addAll(modeStatuses);
+                for (Map<String, Object> raw : rawStatuses) {
+                    LineStatusResponse newStatus = mapToLineStatusResponse(raw, trimmedMode);
+                    LineStatusResponse oldStatus = existingStatuses.get(newStatus.getId());
+
+                    // OPTIMIZATION: If new status is "Good Service" (which generates a random
+                    // reason if empty)
+                    // and we already have a valid random reason stored, KEEP the stored one to
+                    // avoid noise.
+                    if (oldStatus != null
+                            && "Good Service".equalsIgnoreCase(newStatus.getStatusSeverityDescription())
+                            && TflUtils.GOOD_SERVICE_MESSAGES.contains(oldStatus.getReason())) {
+                        newStatus.setReason(oldStatus.getReason());
+                    }
+
+                    // Change Detection
+                    boolean changed = false;
+                    if (oldStatus == null) {
+                        changed = true; // New line
+                    } else {
+                        boolean statusChanged = !Objects.equals(oldStatus.getStatusSeverityDescription(),
+                                newStatus.getStatusSeverityDescription());
+                        boolean reasonChanged = !Objects.equals(oldStatus.getReason(), newStatus.getReason());
+                        changed = statusChanged || reasonChanged;
+                    }
+
+                    if (changed) {
+                        String topic = "mode_" + newStatus.getId();
+                        log.info("🔔 Status changed for line {} (Mode: {}). Pushing to FCM topic: {}",
+                                newStatus.getId(), newStatus.getMode(), topic);
+                        fcmService.publishToTopic(topic, newStatus);
+                    }
+
+                    allStatuses.add(newStatus);
+                }
 
             } catch (Exception e) {
                 log.error("❌ Error polling line statuses for mode: {}", trimmedMode, e);
@@ -138,7 +175,7 @@ public class LineService {
     }
 
     @SuppressWarnings("unchecked")
-    private LineStatusResponse mapToLineStatusResponse(Map<String, Object> l) {
+    private LineStatusResponse mapToLineStatusResponse(Map<String, Object> l, String mode) {
         String id = (String) l.get("id");
         String name = (String) l.get("name");
         List<Map<String, Object>> lineStatuses = (List<Map<String, Object>>) l.get("lineStatuses");
@@ -157,18 +194,38 @@ public class LineService {
                 .name(name)
                 .statusSeverityDescription(statusSeverityDescription)
                 .reason(updateReason(statusSeverityDescription, reason))
+                .mode(mode)
                 .lastUpdatedTime(java.time.LocalDateTime.now().toString())
                 .build();
     }
 
-    public List<LineStatusResponse> getLineStatuses() {
+    public List<LineStatusResponse> getLineStatuses(String lineId, String mode) {
         List<LineStatusResponse> statuses = lineStatusRepository.findAll();
+
+        Stream<LineStatusResponse> stream = statuses.stream();
+        if (mode != null && !mode.isEmpty()) {
+            stream = stream.filter(s -> mode.equalsIgnoreCase(s.getMode()));
+        }
+        if (lineId != null && !lineId.isEmpty()) {
+            stream = stream.filter(s -> lineId.equalsIgnoreCase(s.getId()));
+        }
+        List<LineStatusResponse> filtered = stream.collect(Collectors.toList());
+
         if (statuses.isEmpty()) {
             log.info("DATA: ⚪ Firestore MISS for line statuses. Triggering poll...");
-            return syncLineStatuses();
+            // Sync returns all, so we must filter the result of sync as well
+            List<LineStatusResponse> fresh = syncLineStatuses();
+            // Re-apply filter
+            Stream<LineStatusResponse> freshStream = fresh.stream();
+            if (mode != null && !mode.isEmpty())
+                freshStream = freshStream.filter(s -> mode.equalsIgnoreCase(s.getMode()));
+            if (lineId != null && !lineId.isEmpty())
+                freshStream = freshStream.filter(s -> lineId.equalsIgnoreCase(s.getId()));
+            return freshStream.collect(Collectors.toList());
         }
-        log.info("DATA: 🟢 Firestore HIT for {} line statuses", statuses.size());
-        return statuses;
+
+        log.info("DATA: 🟢 Firestore HIT for {} line statuses (filtered from {})", filtered.size(), statuses.size());
+        return filtered;
     }
 
     private String updateReason(String statusSeverityDescriptionString, String reasonString) {

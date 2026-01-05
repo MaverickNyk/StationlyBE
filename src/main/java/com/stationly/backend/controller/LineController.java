@@ -38,10 +38,12 @@ public class LineController {
         return lineService.getLineRoute(lineId);
     }
 
-    @Operation(summary = "Get All Line Statuses", description = "Retrieves the latest status for all TFL transport lines (e.g., Tube, DLR, Overground) from Firestore cache.")
+    @Operation(summary = "Get All Line Statuses", description = "Retrieves the latest status for all TFL transport lines. Supports filtering by lineId and mode.")
     @ApiResponse(responseCode = "200", description = "Successful retrieval")
     @GetMapping("/status")
-    public List<LineStatusResponse> getLineStatuses() {
-        return lineService.getLineStatuses();
+    public List<LineStatusResponse> getLineStatuses(
+            @Parameter(description = "Optional Line ID filter") @org.springframework.web.bind.annotation.RequestParam(required = false) String lineId,
+            @Parameter(description = "Optional Transport Mode filter") @org.springframework.web.bind.annotation.RequestParam(required = false) String mode) {
+        return lineService.getLineStatuses(lineId, mode);
     }
 }

@@ -22,7 +22,7 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 @Slf4j
-public class FcmService {
+public class FcmService implements NotificationService {
 
     @Value("${fcm.service-account-path}")
     private String serviceAccountPath;
