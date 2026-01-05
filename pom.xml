@@ -35,6 +35,13 @@
 			<artifactId>firebase-admin</artifactId>
 			<version>9.3.0</version>
 		</dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-resolver-dns-native-macos</artifactId>
+			<classifier>osx-aarch_64</classifier>
+			<scope>runtime</scope>
+		</dependency>
+
 
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -75,6 +82,18 @@
 			<groupId>com.oracle.oci.sdk</groupId>
 			<artifactId>oci-java-sdk-common-httpclient-jersey3</artifactId>
 			<version>3.33.0</version>
+		</dependency>
+
+		<!-- Google Cloud Firestore -->
+		<dependency>
+			<groupId>com.google.cloud</groupId>
+			<artifactId>google-cloud-firestore</artifactId>
+			<version>3.15.0</version>
+		</dependency>
+		<dependency>
+			<groupId>ch.hsr</groupId>
+			<artifactId>geohash</artifactId>
+			<version>1.4.0</version>
 		</dependency>
 	</dependencies>
 

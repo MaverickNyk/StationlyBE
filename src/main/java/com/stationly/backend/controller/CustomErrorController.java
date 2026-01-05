@@ -28,7 +28,7 @@ public class CustomErrorController implements ErrorController {
                 .timestamp(LocalDateTime.now())
                 .status(statusCode)
                 .error(HttpStatus.valueOf(statusCode).getReasonPhrase())
-                .message("Oops! The resource you are looking for does not exist on Mind The Time.")
+                .message("Oops! The resource you are looking for does not exist on Stationly BE.")
                 .path(request.getAttribute(RequestDispatcher.ERROR_REQUEST_URI).toString())
                 .build();
 
@@ -44,7 +44,7 @@ public class CustomErrorController implements ErrorController {
         }
 
         return "<html>" +
-                "<head><title>Mind The Time - Error</title>" +
+                "<head><title>Stationly BE - Error</title>" +
                 "<style>" +
                 "body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; color: #333; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }"
                 +
@@ -60,8 +60,8 @@ public class CustomErrorController implements ErrorController {
                 "<body>" +
                 "<div class='container'>" +
                 "<h1>" + code + "</h1>" +
-                "<h2>Oops! Lost in London?</h2>" +
-                "<p>We couldn't find the page or endpoint you're looking for on <strong>Mind The Time</strong>.</p>" +
+                "<h2>Oops! Lost in StationlyBE?</h2>" +
+                "<p>We couldn't find the page or endpoint you're looking for on <strong>StationlyBE</strong>.</p>" +
                 "<a href='/swagger-ui.html'>Explore API Docs</a>" +
                 "</div>" +
                 "</body>" +

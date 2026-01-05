@@ -3,11 +3,11 @@ package com.stationly.backend.service;
 import com.stationly.backend.client.TflApiClient;
 import com.stationly.backend.model.ArrivalPrediction;
 import com.stationly.backend.model.RefreshSummary;
-import com.stationly.backend.model.Station;
+import com.stationly.backend.model.StationPredictions;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
+
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -33,15 +33,6 @@ public class TflPollingService {
         private String tflTransportModes;
 
         private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        /**
-         * Poll TfL API every 60 seconds and update FCM topics
-         * Polls each configured mode separately
-         */
-        @Scheduled(fixedRateString = "${tfl.polling.interval:60000}")
-        public void pollAndUpdate() {
-                refreshAll();
-        }
 
         /**
          * Refresh all configured transport modes
@@ -126,7 +117,7 @@ public class TflPollingService {
 
                         // Transform into grouped Station objects
                         log.info("🔄 Transforming data into station-centric groups...");
-                        Map<String, Station> groupedStations = transformationService
+                        Map<String, StationPredictions> groupedStations = transformationService
                                         .transformToStationGroups(arrivals);
 
                         // Publish to FCM in batch
