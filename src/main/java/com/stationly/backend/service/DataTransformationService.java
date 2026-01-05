@@ -166,11 +166,21 @@ public class DataTransformationService {
 
         return PredictionItem.builder()
                 .destinationNaptanId(arrival.getDestinationNaptanId())
-                .platformName(arrival.getPlatformName())
+                .platformName(formatPlatformName(arrival.getPlatformName()))
                 .expectedArrival(arrival.getExpectedArrival() != null
                         ? arrival.getExpectedArrival().format(DateTimeFormatter.ISO_INSTANT)
                         : null)
                 .displayName(rawName)
                 .build();
+    }
+
+    private String formatPlatformName(String rawPlatform) {
+        if (rawPlatform == null)
+            return "";
+        // If it's just a number (e.g. "2"), prepend "Platform "
+        if (rawPlatform.matches("\\d+")) {
+            return "Platform " + rawPlatform;
+        }
+        return rawPlatform;
     }
 }
