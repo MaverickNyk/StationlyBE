@@ -29,9 +29,6 @@ public class FirestoreConfig {
     @Value("${fcm.service-account-path:}")
     private String credentialsPath;
 
-    @Value("${fcm.service-account-json:}")
-    private String credentialsJson;
-
     @Bean
     public Firestore firestore() throws IOException {
         GoogleCredentials credentials = getCredentials();
@@ -59,13 +56,6 @@ public class FirestoreConfig {
         if (credentialsPath != null && !credentialsPath.isEmpty()) {
             log.info("🔐 Loading Firestore credentials from file: {}", credentialsPath);
             return GoogleCredentials.fromStream(new FileInputStream(credentialsPath));
-        }
-
-        // Priority 2: JSON string (for Lambda/serverless if file not present)
-        if (credentialsJson != null && !credentialsJson.isEmpty()) {
-            log.info("🔐 Loading Firestore credentials from JSON string");
-            InputStream stream = new ByteArrayInputStream(credentialsJson.getBytes(StandardCharsets.UTF_8));
-            return GoogleCredentials.fromStream(stream);
         }
 
         // Priority 3: Default credentials (GCP environment)

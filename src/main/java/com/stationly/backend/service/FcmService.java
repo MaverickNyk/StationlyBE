@@ -27,9 +27,6 @@ public class FcmService {
     @Value("${fcm.service-account-path}")
     private String serviceAccountPath;
 
-    @Value("${fcm.service-account-json}")
-    private String serviceAccountJson;
-
     @Value("${firebase.database-url:}")
     private String databaseUrl;
 
@@ -47,10 +44,9 @@ public class FcmService {
     @PostConstruct
     public void initialize() {
         // Check if JSON string is provided (Lambda/environment variable)
-        if (serviceAccountJson != null && !serviceAccountJson.isEmpty()) {
+        if (serviceAccountPath != null && !serviceAccountPath.isEmpty()) {
             try {
-                ByteArrayInputStream serviceAccount = new ByteArrayInputStream(
-                        serviceAccountJson.getBytes(StandardCharsets.UTF_8));
+                FileInputStream serviceAccount = new FileInputStream(serviceAccountPath);
                 FirebaseOptions options = FirebaseOptions.builder()
                         .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                         .setDatabaseUrl(databaseUrl)
