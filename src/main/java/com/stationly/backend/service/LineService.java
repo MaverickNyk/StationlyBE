@@ -5,6 +5,8 @@ import com.stationly.backend.model.LineInfo;
 import com.stationly.backend.model.LineRouteResponse;
 import com.stationly.backend.model.LineStatusResponse;
 import com.stationly.backend.repository.DataRepository;
+import com.stationly.backend.util.TflUtils;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -154,7 +156,7 @@ public class LineService {
                 .id(id)
                 .name(name)
                 .statusSeverityDescription(statusSeverityDescription)
-                .reason(reason)
+                .reason(updateReason(statusSeverityDescription, reason))
                 .lastUpdatedTime(java.time.LocalDateTime.now().toString())
                 .build();
     }
@@ -168,4 +170,19 @@ public class LineService {
         log.info("DATA: 🟢 Firestore HIT for {} line statuses", statuses.size());
         return statuses;
     }
+
+    private String updateReason(String statusSeverityDescriptionString, String reasonString) {
+        // 1. Check if status is Good Service AND the existing reason is empty/null
+        if ("Good Service".equalsIgnoreCase(statusSeverityDescriptionString)
+                && (reasonString == null || reasonString.trim().isEmpty())) {
+
+            // 2. Assign a random message from your list
+            int index = new Random().nextInt(TflUtils.GOOD_SERVICE_MESSAGES.size());
+            return TflUtils.GOOD_SERVICE_MESSAGES.get(index);
+        }
+
+        // 3. If there is already a reason (like a delay description), return it as is
+        return reasonString;
+    }
+
 }
