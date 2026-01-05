@@ -109,6 +109,7 @@ public class LineService {
     public List<LineStatusResponse> syncLineStatuses() {
         String[] modes = tflTransportModes.split(",");
         List<LineStatusResponse> allStatuses = new ArrayList<>();
+        Map<String, Object> fcmUpdates = new HashMap<>();
 
         // 1. Fetch existing statuses to compare against
         Map<String, LineStatusResponse> existingStatuses = lineStatusRepository.findAll().stream()
@@ -154,9 +155,9 @@ public class LineService {
 
                     if (changed) {
                         String topic = "mode_" + newStatus.getId();
-                        log.info("🔔 Status changed for line {} (Mode: {}). Pushing to FCM topic: {}",
+                        log.info("🔔 Status changed for line {} (Mode: {}). Queuing FCM update for topic: {}",
                                 newStatus.getId(), newStatus.getMode(), topic);
-                        fcmService.publishToTopic(topic, newStatus);
+                        fcmUpdates.put(topic, newStatus);
                     }
 
                     allStatuses.add(newStatus);
@@ -171,6 +172,12 @@ public class LineService {
             lineStatusRepository.saveAll(allStatuses);
             log.info("✅ Successfully polled and saved {} line statuses to Firestore", allStatuses.size());
         }
+
+        if (!fcmUpdates.isEmpty()) {
+            log.info("🚀 Pushing {} batched line status updates to FCM...", fcmUpdates.size());
+            fcmService.publishAll(fcmUpdates);
+        }
+
         return allStatuses;
     }
 

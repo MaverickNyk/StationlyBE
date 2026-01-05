@@ -67,7 +67,8 @@ class LineServiceTest {
         assertEquals("Severe Delays", result.get(0).getStatusSeverityDescription());
         assertEquals("tube", result.get(0).getMode());
 
-        verify(fcmService, times(1)).publishToTopic(eq("mode_victoria"), any(LineStatusResponse.class));
+        verify(fcmService, times(1)).publishAll(anyMap());
+        verify(fcmService, never()).publishToTopic(anyString(), any());
         verify(lineStatusRepository, times(1)).saveAll(anyList());
     }
 
@@ -121,6 +122,7 @@ class LineServiceTest {
         LineStatusResponse updated = result.get(0);
         assertEquals(knownMessage, updated.getReason()); // Should be preserved
         verify(fcmService, never()).publishToTopic(anyString(), any());
+        verify(fcmService, never()).publishAll(anyMap());
     }
 
     @Test
@@ -151,7 +153,7 @@ class LineServiceTest {
         lineService.syncLineStatuses();
 
         // Then
-        verify(fcmService, times(1)).publishToTopic(eq("mode_victoria"), any());
+        verify(fcmService, times(1)).publishAll(anyMap());
     }
 
     @Test

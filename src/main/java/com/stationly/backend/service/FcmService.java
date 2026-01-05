@@ -224,6 +224,15 @@ public class FcmService implements NotificationService {
                     com.google.firebase.messaging.BatchResponse response = future.join();
                     if (response != null) {
                         successCount += response.getSuccessCount();
+                        if (response.getFailureCount() > 0) {
+                            log.warn("⚠️ FCM Batch Warning: {} failures detected in batch.",
+                                    response.getFailureCount());
+                            response.getResponses().stream()
+                                    .filter(r -> !r.isSuccessful())
+                                    .forEach(r -> log.warn("❌ FCM Send Error: {} - {}",
+                                            r.getException().getMessagingErrorCode(),
+                                            r.getException().getMessage()));
+                        }
                     }
                 }
 
