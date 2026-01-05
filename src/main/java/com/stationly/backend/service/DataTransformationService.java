@@ -160,6 +160,7 @@ public class DataTransformationService {
         if (rawName != null) {
             rawName = rawName.replace(" Underground Station", "")
                     .replace(" Station", "")
+                    .replace(" DLR", "")
                     .trim();
         }
 

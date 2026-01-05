@@ -58,15 +58,15 @@ public class StationService {
     }
 
     public void syncStationsByMode(String modeName) {
-        syncStationsByMode(modeName, lineId -> true);
+        syncStationsByMode(modeName, null);
     }
 
-    public void syncStationsByMode(String modeName, java.util.function.Predicate<String> lineFilter) {
+    public void syncStationsByMode(String modeName, String lineId) {
         log.info("🚀 Starting batch sync for mode: {}", modeName);
 
-        // 1. Fetch EVERYTHING from DB once.
-        log.info("📥 Fetching existing stations from Firestore...");
-        Map<String, Station> existingStations = getSavedStations();
+        // 1. Fetch stations intelligently to avoid full DB scan
+        log.info("📥 Fetching existing stations from Firestore for mode: {} (LineId: {})...", modeName, lineId);
+        Map<String, Station> existingStations = getSavedStations(modeName, lineId);
         log.info("✅ Loaded {} existing stations.", existingStations.size());
 
         // 2. Fetch lines to process
@@ -96,13 +96,14 @@ public class StationService {
         List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
 
         for (Map<String, Object> line : lines) {
-            String lineId = (String) line.get("id");
-            if (!lineFilter.test(lineId))
+            String currentLineId = (String) line.get("id");
+            if (lineId != null && !lineId.equals(currentLineId))
                 continue;
 
             futures.add(executor.submit(() -> {
                 try {
-                    processLineForBatch(lineId, modeName, freshStationsMap, existingStations); // Process into fresh map
+                    processLineForBatch(currentLineId, modeName, freshStationsMap, existingStations); // Process into
+                                                                                                      // fresh map
                 } catch (Exception e) {
                     log.error("❌ Failed to process line {}: {}", lineId, e.getMessage());
                 }
@@ -201,7 +202,7 @@ public class StationService {
         Map<String, Station> stationsToSave = new HashMap<>(); // Fresh map for single line
         // We need existing stations to do a proper merge even for single line to avoid
         // overwriting other modes
-        Map<String, Station> existingStations = getSavedStations();
+        Map<String, Station> existingStations = getSavedStations(null, lineId);
 
         try {
             processLineForBatch(lineId, modeName, stationsToSave, existingStations);
@@ -393,12 +394,31 @@ public class StationService {
         generateSearchKeys(station);
     }
 
-    private Map<String, Station> getSavedStations() {
-        // 1. Get everything once (1 network call)
-        List<Station> allStations = stationRepository.findAll();
-        Map<String, Station> stationMap = allStations.stream()
-                .collect(Collectors.toMap(Station::getNaptanId, s -> s));
-        return stationMap;
+    private Map<String, Station> getSavedStations(String modeName, String lineId) {
+        List<Station> stations;
+
+        if (lineId != null) {
+            // If we are syncing a specific line, just get stations for that line
+            log.info("🔎 Fetching stations for lineId: {}", lineId);
+            stations = stationRepository.findByArrayContains("searchKeys", lineId);
+        } else if ("bus".equalsIgnoreCase(modeName) || "tram".equalsIgnoreCase(modeName)) {
+            // For bus/tram, fetching ALL is too heavy (20k+). Fetch only for this mode.
+            // Risk: If a station gains 'bus' mode on a separate sync, we might miss it here
+            // if we don't have it.
+            // But typical overlap for bus is low/manageable or they are already distinct
+            // stops.
+            log.info("🔎 Fetching stations for mode: {} (Optimized fetch)", modeName);
+            stations = stationRepository.findByArrayContains("searchKeys", modeName);
+        } else {
+            // For Tube/DLR/Rail, we want to fetch EVERYTHING EXCEPT buses to ensure we
+            // don't duplicate/overwrite
+            // multi-mode stations (e.g. Waterloo) while still avoiding the 20k bus payload.
+            log.info("🔎 Fetching all stations EXCEPT buses (Safe fetch for {})", modeName);
+            stations = stationRepository.findAllExcept("stopType", "NaptanPublicBusCoachTram");
+        }
+
+        return stations.stream()
+                .collect(Collectors.toMap(Station::getNaptanId, s -> s, (s1, s2) -> s1));
     }
 
     private void generateSearchKeys(Station station) {
