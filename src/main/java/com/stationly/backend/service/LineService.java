@@ -154,7 +154,7 @@ public class LineService {
                     }
 
                     if (changed) {
-                        String topic = "mode_" + newStatus.getId();
+                        String topic = "LineStatus_" + newStatus.getMode() + "_" + newStatus.getId();
                         log.info("🔔 Status changed for line {} (Mode: {}). Queuing FCM update for topic: {}",
                                 newStatus.getId(), newStatus.getMode(), topic);
                         fcmUpdates.put(topic, newStatus);

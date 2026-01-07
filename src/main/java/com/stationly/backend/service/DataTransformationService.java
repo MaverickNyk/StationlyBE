@@ -166,7 +166,7 @@ public class DataTransformationService {
 
         return PredictionItem.builder()
                 .destinationNaptanId(arrival.getDestinationNaptanId())
-                .platformName(formatPlatformName(arrival.getPlatformName()))
+                .platformName(getPresentablePlatform(arrival.getModeName(), arrival.getPlatformName()))
                 .expectedArrival(arrival.getExpectedArrival() != null
                         ? arrival.getExpectedArrival().format(DateTimeFormatter.ISO_INSTANT)
                         : null)
@@ -174,13 +174,34 @@ public class DataTransformationService {
                 .build();
     }
 
-    private String formatPlatformName(String rawPlatform) {
-        if (rawPlatform == null)
-            return "";
-        // If it's just a number (e.g. "2"), prepend "Platform "
+    public String getPresentablePlatform(String mode, String rawPlatform) {
+        // 1. Handle Null or Missing Data
+        if (rawPlatform == null || rawPlatform.equalsIgnoreCase("null") || rawPlatform.trim().isEmpty()) {
+            return "bus".equalsIgnoreCase(mode) ? "No Stop assigned" : "No Platform assigned";
+        }
+
+        rawPlatform = rawPlatform.trim();
+
+        // 2. Format Tube/Train descriptive strings (e.g., "Westbound - Platform 2")
+        if (rawPlatform.contains(" - ")) {
+            String[] parts = rawPlatform.split(" - ");
+            if (parts.length == 2) {
+                // Re-orders to "Platform 2 (Westbound)"
+                return parts[1] + " (" + parts[0] + ")";
+            }
+        }
+
+        // 3. Format Bus Stop letters (e.g., "BP" -> "Stop BP")
+        if ("bus".equalsIgnoreCase(mode)) {
+            return "Stop " + rawPlatform.toUpperCase();
+        }
+
+        // 4. Format Numeric platforms (e.g., "1" -> "Platform 1")
         if (rawPlatform.matches("\\d+")) {
             return "Platform " + rawPlatform;
         }
+
+        // Fallback for anything already formatted
         return rawPlatform;
     }
 }
