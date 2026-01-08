@@ -106,36 +106,46 @@ public class LineService {
         return response;
     }
 
+    /**
+      * Poll Line Statuses from TfL API on the scheduled interval
+      */
     public List<LineStatusResponse> syncLineStatuses() {
+        log.info("╔═══════════════════════════════════════════════════════════════════");
+        log.info("║ 🚇 LINE STATUS SYNC STARTED");
+        log.info("╚═══════════════════════════════════════════════════════════════════");
+
         String[] modes = tflTransportModes.split(",");
         List<LineStatusResponse> allStatuses = new ArrayList<>();
         Map<String, Object> fcmUpdates = new HashMap<>();
 
         // 1. Fetch existing statuses to compare against
+        log.info("📥 Step 1: Loading existing line statuses from Firestore...");
         Map<String, LineStatusResponse> existingStatuses = lineStatusRepository.findAll().stream()
                 .collect(Collectors.toMap(LineStatusResponse::getId, Function.identity(), (a, b) -> a));
+        log.info("✅ Step 1: Loaded {} existing line statuses", existingStatuses.size());
 
+        // 2. Process each mode
+        log.info("📋 Step 2: Processing {} modes...", modes.length);
         for (String mode : modes) {
             String trimmedMode = mode.trim();
             if (trimmedMode.isEmpty())
                 continue;
 
-            log.info("🚇 Starting line status polling for mode: {}", trimmedMode);
+            log.info("   📡 [{}] Fetching line statuses...", trimmedMode);
             try {
                 List<Map<String, Object>> rawStatuses = tflApiClient.getLineStatuses(trimmedMode);
                 if (rawStatuses == null || rawStatuses.isEmpty()) {
-                    log.warn("⚠️ No line statuses received from TfL for mode: {}", trimmedMode);
+                    log.warn("   ⚠️ [{}] No line statuses received", trimmedMode);
                     continue;
                 }
 
+                int changedCount = 0;
                 for (Map<String, Object> raw : rawStatuses) {
                     LineStatusResponse newStatus = mapToLineStatusResponse(raw, trimmedMode);
                     LineStatusResponse oldStatus = existingStatuses.get(newStatus.getId());
 
-                    // OPTIMIZATION: If new status is "Good Service" (which generates a random
-                    // reason if empty)
-                    // and we already have a valid random reason stored, KEEP the stored one to
-                    // avoid noise.
+                    // OPTIMIZATION: If new status is "Good Service" and we already have a valid
+                    // random reason stored, KEEP the stored one to avoid noise.
                     if (oldStatus != null
                             && "Good Service".equalsIgnoreCase(newStatus.getStatusSeverityDescription())
                             && TflUtils.GOOD_SERVICE_MESSAGES.contains(oldStatus.getReason())) {
@@ -155,28 +165,44 @@ public class LineService {
 
                     if (changed) {
                         String topic = "LineStatus_" + newStatus.getMode() + "_" + newStatus.getId();
-                        log.info("🔔 Status changed for line {} (Mode: {}). Queuing FCM update for topic: {}",
-                                newStatus.getId(), newStatus.getMode(), topic);
+                        log.info("   🔔 [{}] Status changed: {} | Topic: {}",
+                                        trimmedMode, newStatus.getId(), topic);
                         fcmUpdates.put(topic, newStatus);
+                        changedCount++;
                     }
 
                     allStatuses.add(newStatus);
                 }
 
+                log.info("   ✅ [{}] Processed {} lines ({} changed)",
+                                trimmedMode, rawStatuses.size(), changedCount);
+
             } catch (Exception e) {
-                log.error("❌ Error polling line statuses for mode: {}", trimmedMode, e);
+                log.error("   ❌ [{}] Error polling line statuses: {}", trimmedMode, e.getMessage());
             }
         }
 
+        // 3. Save to Firestore
         if (!allStatuses.isEmpty()) {
             lineStatusRepository.saveAll(allStatuses);
-            log.info("✅ Successfully polled and saved {} line statuses to Firestore", allStatuses.size());
+            log.info("✅ Step 3: Saved {} line statuses to Firestore", allStatuses.size());
+        } else {
+            log.info("✅ Step 3: No line statuses to save");
         }
 
+        // 4. Publish to FCM
         if (!fcmUpdates.isEmpty()) {
-            log.info("🚀 Pushing {} batched line status updates to FCM...", fcmUpdates.size());
+            log.info("🚀 Step 4: Publishing {} line status updates to FCM...", fcmUpdates.size());
             fcmService.publishAll(fcmUpdates);
+            log.info("✅ Step 4: Queued {} FCM messages", fcmUpdates.size());
+        } else {
+            log.info("✅ Step 4: No line status changes to publish");
         }
+
+        log.info("╔═══════════════════════════════════════════════════════════════════");
+        log.info("║ ✅ LINE STATUS SYNC COMPLETED | Total: {} | Changed: {}",
+                        allStatuses.size(), fcmUpdates.size());
+        log.info("╚═══════════════════════════════════════════════════════════════════");
 
         return allStatuses;
     }

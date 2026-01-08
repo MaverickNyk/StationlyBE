@@ -35,9 +35,8 @@ public class StationService {
     }
 
     /**
-     * /**
-     * Search stations within a given radius (km) of a location.
-     */
+      * Search stations within a given radius (km) of a location.
+      */
     public List<Station> searchByLocation(double lat, double lon, double radiusKm) {
         List<Station> allStations = stationRepository.findAll();
         return allStations.stream()
@@ -61,37 +60,32 @@ public class StationService {
         syncStationsByMode(modeName, null);
     }
 
+    /**
+      * Sync stations for a specific mode (and optionally line) from TfL API
+      * and update Firestore with any changes.
+      */
     public void syncStationsByMode(String modeName, String lineId) {
-        log.info("🚀 Starting batch sync for mode: {}", modeName);
+        log.info("╔═══════════════════════════════════════════════════════════════════");
+        log.info("║ 🚀 STATION SYNC STARTED | Mode: {} | Line: {}", modeName, lineId != null ? lineId : "ALL");
+        log.info("╚═══════════════════════════════════════════════════════════════════");
 
         // 1. Fetch stations intelligently to avoid full DB scan
-        log.info("📥 Fetching existing stations from Firestore for mode: {} (LineId: {})...", modeName, lineId);
+        log.info("📥 [{}] Step 1: Fetching existing stations from Firestore...", modeName);
         Map<String, Station> existingStations = getSavedStations(modeName, lineId);
-        log.info("✅ Loaded {} existing stations.", existingStations.size());
+        log.info("✅ [{}] Step 1: Loaded {} existing stations", modeName, existingStations.size());
 
         // 2. Fetch lines to process
+        log.info("📋 [{}] Step 2: Fetching lines to process...", modeName);
         List<Map<String, Object>> lines = tflApiClient.getLinesByMode(modeName);
         if (lines == null || lines.isEmpty()) {
-            log.warn("⚠️ No lines found for mode: {}", modeName);
+            log.warn("⚠️ [{}] No lines found for mode", modeName);
             return;
         }
+        log.info("✅ [{}] Step 2: Found {} lines to process", modeName, lines.size());
 
         // 3. Process lines in parallel to build "Fresh" state in-memory
+        log.info("🔄 [{}] Step 3: Processing lines in parallel...", modeName);
         Map<String, Station> freshStationsMap = new java.util.concurrent.ConcurrentHashMap<>();
-        // Pre-populate with existing so we merge INTO them (preserving other modes'
-        // data)
-        // Actually, better strategy:
-        // We want to update existing stations with new data for THIS mode.
-        // So we can clone existing map or just work on a fresh map and then merge.
-        // Working on a fresh map is safer for partial failures.
-        // But we need existing data to preserve OTHER modes.
-        // Let's use a concurrent map that starts as a copy of existing, BUT deep copy
-        // is hard.
-        // Alternative: Process fresh data into a "Fresh Changes" map.
-        // Then iterate Fresh Changes, merge with Existing to see if anything ACTUALLY
-        // changed.
-
-        // Rate limited to ~5 req/sec globally, so no need for many threads. 5 is ample.
         java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(5);
         List<java.util.concurrent.Future<?>> futures = new ArrayList<>();
 
@@ -102,10 +96,9 @@ public class StationService {
 
             futures.add(executor.submit(() -> {
                 try {
-                    processLineForBatch(currentLineId, modeName, freshStationsMap, existingStations); // Process into
-                                                                                                      // fresh map
+                    processLineForBatch(currentLineId, modeName, freshStationsMap, existingStations);
                 } catch (Exception e) {
-                    log.error("❌ Failed to process line {}: {}", lineId, e.getMessage());
+                    log.error("❌ [{}] Failed to process line {}: {}", modeName, currentLineId, e.getMessage());
                 }
             }));
         }
@@ -115,13 +108,14 @@ public class StationService {
             try {
                 f.get();
             } catch (Exception e) {
-                log.error("❌ Error waiting for future", e);
+                log.error("❌ [{}] Error waiting for future: {}", modeName, e.getMessage());
             }
         }
         executor.shutdown();
+        log.info("✅ [{}] Step 3: Processed {} lines", modeName, lines.size());
 
         // 4. Diff and Identify Changed Stations
-        log.info("🔄 Validating changes against existing DB...");
+        log.info("🔍 [{}] Step 4: Validating changes against existing DB...", modeName);
         List<Station> changedStations = new ArrayList<>();
         int totalProcessed = freshStationsMap.size();
 
@@ -134,13 +128,16 @@ public class StationService {
 
         // 5. Save only changed stations
         if (!changedStations.isEmpty()) {
-            log.info("💾 Found {} changed/new stations. Saving in batches...", changedStations.size());
+            log.info("💾 [{}] Step 5: Saving {} changed/new stations in batches...", modeName, changedStations.size());
             saveInBatches(changedStations, modeName);
         } else {
-            log.info("🎉 No changes detected for mode: {}. All up to date.", modeName);
+            log.info("🎉 [{}] Step 5: No changes detected. All stations up to date", modeName);
         }
 
-        log.info("✅ Sync completed for mode: {}. Processed {} unique stations.", modeName, totalProcessed);
+        log.info("╔═══════════════════════════════════════════════════════════════════");
+        log.info("║ ✅ [{}] SYNC COMPLETED | Processed: {} stations | Changed: {}",
+                        modeName, totalProcessed, changedStations.size());
+        log.info("╚═══════════════════════════════════════════════════════════════════");
     }
 
     private void saveInBatches(List<Station> stations, String modeName) {

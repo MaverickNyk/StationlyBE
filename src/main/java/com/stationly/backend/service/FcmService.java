@@ -161,23 +161,17 @@ public class FcmService implements NotificationService {
 
         if (!batch.isEmpty()) {
             try {
+                log.info("📤 [FCM] Processing batch of {} messages (Queue before: {})", batch.size(), pendingMessages.size() + batch.size());
                 BatchResponse response = FirebaseMessaging.getInstance().sendEach(batch);
                 if (response.getFailureCount() > 0) {
-                    log.warn("⚠️ FCM Pacer: {} failures in batch of {}.", response.getFailureCount(), batch.size());
-                    // Optional: we could check errors here. If Quota Exceeded, we might want to
-                    // slow down?
+                    log.warn("⚠️ [FCM] Batch completed with {} failures out of {}", response.getFailureCount(), batch.size());
+                } else {
+                    log.info("✅ [FCM] Batch sent successfully: {} messages", batch.size());
                 }
-                // Log only periodically to reduce spam? No, keeping it for now for visibility
-                // log.info("✅ FCM Pacer: Sent {} messages. (Map Size: {})", batch.size(),
-                // pendingMessages.size());
+                log.info("📊 [FCM] Queue after processing: {} items remaining", pendingMessages.size());
             } catch (Exception e) {
-                log.error("❌ FCM Pacer Send Error", e);
+                log.error("❌ [FCM] Send error for batch of {}: {}", batch.size(), e.getMessage());
             }
-        }
-
-        // Log status if queue has items periodically
-        if (!pendingMessages.isEmpty() && System.currentTimeMillis() % 1000 < 200) {
-            log.info("📊 FCM Queue Status: {} pending items.", pendingMessages.size());
         }
     }
 
@@ -186,6 +180,7 @@ public class FcmService implements NotificationService {
      */
     public void publishAll(Map<String, Object> topicPayloads) {
         if (!fcmEnabled || topicPayloads == null || topicPayloads.isEmpty()) {
+            log.warn("⚠️ [FCM] publishAll called but FCM disabled or empty payload");
             return;
         }
 
@@ -201,10 +196,10 @@ public class FcmService implements NotificationService {
                 pendingMessages.put(entry.getKey(), msg);
                 added++;
             } catch (Exception e) {
-                log.error("❌ Failed to build message for topic: {}", entry.getKey(), e);
+                log.error("❌ [FCM] Failed to build message for topic: {}", entry.getKey(), e);
             }
         }
-        log.info("📥 Upserted {} messages to Pacer Map. Current Pending: {}", added, pendingMessages.size());
+        log.info("📥 [FCM] Added {} messages to queue. Total pending: {}", added, pendingMessages.size());
     }
 
     public void publishToTopic(String topic, Object payload) {

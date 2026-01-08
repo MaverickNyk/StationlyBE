@@ -26,14 +26,15 @@ public class DataTransformationService {
     }
 
     /**
-     * Transform TfL arrivals into grouped Station objects
-     * Key pattern: "Station_<stationId>"
-     * 
-     * @param arrivals Raw TfL arrival predictions
-     * @return Map with key pattern "Station_<stationId>" and StationPredictions as
-     *         value
-     */
+      * Transform TfL arrivals into grouped Station objects
+      * Key pattern: "Station_<stationId>"
+      *
+      * @param arrivals Raw TfL arrival predictions
+      * @return Map with key pattern "Station_<stationId>" and StationPredictions as
+      *         value
+      */
     public Map<String, StationPredictions> transformToStationGroups(List<ArrivalPrediction> arrivals) {
+        log.info("🔄 [TRANSFORM] Starting transformation of {} arrivals", arrivals.size());
         Map<String, StationPredictions> stationGroups = new java.util.concurrent.ConcurrentHashMap<>();
         String now = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME);
 
@@ -41,6 +42,8 @@ public class DataTransformationService {
         Map<String, List<ArrivalPrediction>> byStation = arrivals.stream()
                 .filter(a -> a.getNaptanId() != null)
                 .collect(Collectors.groupingBy(ArrivalPrediction::getNaptanId));
+
+        log.info("🔄 [TRANSFORM] Grouped into {} stations", byStation.size());
 
         // Process each station sequentially to avoid thread exhaustion
         byStation.entrySet().forEach(entry -> {
@@ -94,7 +97,7 @@ public class DataTransformationService {
             stationGroups.put(stationKey, station);
         });
 
-        log.debug("Transformed {} arrivals into {} station groups", arrivals.size(), stationGroups.size());
+        log.info("✅ [TRANSFORM] Completed: {} arrivals → {} station groups", arrivals.size(), stationGroups.size());
         return stationGroups;
     }
 
